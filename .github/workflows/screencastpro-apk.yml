@@ -1,0 +1,44 @@
+name: ScreenCastPro APK
+
+# Compila el APK de depuración de ScreenCastPro para instalarlo sin PC:
+# se descarga desde la pestaña Actions (artefacto) con el navegador del teléfono.
+
+on:
+  push:
+    branches:
+      - claude/screencast-pro-android-ntbykl
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ScreenCastPro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar plataforma y build-tools de Android 36
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compilar APK de depuración
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScreenCastPro-debug
+          path: ScreenCastPro/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

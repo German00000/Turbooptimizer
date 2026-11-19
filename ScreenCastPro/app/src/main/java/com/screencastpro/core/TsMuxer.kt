@@ -27,6 +27,8 @@ class TsMuxer(private val hasAudio: Boolean) {
         private const val STREAM_ID_VIDEO = 0xE0
         private const val STREAM_ID_AUDIO = 0xC0
         private const val PTS_WRAP = (1L shl 33)
+        /** PAT/PMT se repiten al menos cada 100 ms: muchos demultiplexores de TV se sincronizan con ello. */
+        private const val PSI_INTERVAL_90K = 9_000L
 
         private val CRC_TABLE = IntArray(256).also { table ->
             for (i in 0 until 256) {
@@ -71,14 +73,19 @@ class TsMuxer(private val hasAudio: Boolean) {
     private var ccPat = 0
     private var ccPmt = 0
     private var ccVideo = 0
+    /** Último PTS (90 kHz) en el que se emitieron PAT/PMT. */
+    private var lastPsi90k = -1L
     private var ccAudio = 0
 
     /** Devuelve los paquetes TS de una unidad de acceso de vídeo (Annex B). */
     @Synchronized
     fun videoAccessUnit(annexB: ByteArray, ptsUs: Long, keyframe: Boolean): ByteArray {
         out.reset()
-        if (keyframe) writeTables()
         val pts90k = toPts90k(ptsUs)
+        if (keyframe || lastPsi90k < 0 || pts90k - lastPsi90k >= PSI_INTERVAL_90K) {
+            writeTables()
+            lastPsi90k = pts90k
+        }
         val pes = buildPes(STREAM_ID_VIDEO, pts90k, annexB, dataAlignment = true)
         emitPes(PID_VIDEO, pes, pcrBase = pts90k)
         return out.toByteArray()

@@ -126,7 +126,11 @@ class ScreenCaptureService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             if (!started) return
-            onTick()
+            try {
+                onTick()
+            } catch (e: Exception) {
+                DiagLog.e(TAG, "control de calidad falló", e)
+            }
             main.postDelayed(this, TICK_MS)
         }
     }
@@ -140,7 +144,11 @@ class ScreenCaptureService : Service() {
             if (h != null && m != null && !idle && h.subscriberCount > 0 &&
                 System.currentTimeMillis() - lastVideoMs > KEEPALIVE_AFTER_MS
             ) {
-                h.publish(m.nullPackets(KEEPALIVE_PACKETS), lastPtsUs, false)
+                try {
+                    h.publish(m.nullPackets(KEEPALIVE_PACKETS), lastPtsUs, false)
+                } catch (e: Exception) {
+                    DiagLog.w(TAG, "keep-alive falló", e)
+                }
             }
             main.postDelayed(this, KEEPALIVE_MS)
         }
@@ -248,7 +256,7 @@ class ScreenCaptureService : Service() {
         val h2 = StreamHub()
         h2.onKeyframeRequested = { encoder?.requestKeyframe() }
         hub = h2
-        val m4 = StreamHub()
+        val m4 = StreamHub(withHls = false)
         m4.onKeyframeRequested = { encoder?.requestKeyframe() }
         mp4Hub = m4
         server = StreamServer(h2, PORT, token, m4, log = { DiagLog.i("Servidor", it) }).also { it.start() }
@@ -329,7 +337,7 @@ class ScreenCaptureService : Service() {
                 DiagLog.i(TAG, "H.264 ${f.spsSummary()} (los televisores DLNA suelen decodificar hasta el nivel 4.1)")
             }
             if (f.hasParams && m4.initSegment == null) m4.setInitSegment(f.initSegment())
-            if (m4.initSegment != null) m4.publish(f.fragment(au, ptsUs, key), ptsUs, key)
+            if (m4.initSegment != null && m4.subscriberCount > 0) m4.publish(f.fragment(au, ptsUs, key), ptsUs, key)
         }
     }
 
@@ -344,7 +352,7 @@ class ScreenCaptureService : Service() {
         // Mismo audio para el flujo MP4 (DLNA): una trama AAC por fragmento.
         val f = fmp4
         val m4 = mp4Hub
-        if (f != null && m4 != null && m4.initSegment != null) {
+        if (f != null && m4 != null && m4.initSegment != null && m4.subscriberCount > 0) {
             m4.publish(f.audioFragment(adts, ptsUs), ptsUs, false)
         }
     }
@@ -438,7 +446,7 @@ class ScreenCaptureService : Service() {
 
     private fun publishState() {
         val h = hub
-        val ip = Lan.localIpv4()
+        val ip = Lan.wifiIpv4() ?: Lan.localIpv4()
         val base = if (ip != null) "http://$ip:$PORT/$token" else null
         val lvl = ladder.getOrNull(currentLevel) ?: return
         val (w, hgt) = dimsFor(currentLevel)

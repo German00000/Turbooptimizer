@@ -103,10 +103,17 @@ class AudioCapture(
         val pcm = ByteArray(READ_BYTES)
         val info = MediaCodec.BufferInfo()
         var frames = 0L
+        var readErrors = 0
         try {
             while (running) {
                 val n = rec.read(pcm, 0, pcm.size) // bloqueante, ~23 ms por lectura
-                if (n <= 0) continue
+                if (n < 0) {
+                    // Error transitorio de AudioRecord: se espera un poco en vez de girar en vacío.
+                    if (readErrors++ == 0) Log.w(TAG, "AudioRecord.read devolvió $n")
+                    Thread.sleep(20)
+                    continue
+                }
+                if (n == 0) continue
                 val inIdx = enc.dequeueInputBuffer(10_000)
                 if (inIdx >= 0) {
                     val ib = enc.getInputBuffer(inIdx)
@@ -140,7 +147,11 @@ class AudioCapture(
                 buf.get(frame)
                 // El AAC del codificador no lleva cabecera: se añade ADTS para poder mezclarlo en MPEG-TS.
                 val adts = TsMuxer.adtsHeader(frame.size, SAMPLE_RATE, CHANNELS) + frame
-                onEncoded(adts, info.presentationTimeUs)
+                try {
+                    onEncoded(adts, info.presentationTimeUs)
+                } catch (e: Exception) {
+                    Log.w(TAG, "trama de audio no enviada", e)
+                }
             }
             enc.releaseOutputBuffer(idx, false)
         }

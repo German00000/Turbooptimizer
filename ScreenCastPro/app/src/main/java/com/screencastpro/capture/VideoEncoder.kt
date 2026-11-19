@@ -120,7 +120,12 @@ class VideoEncoder(
                         if (baseUs < 0) baseUs = info.presentationTimeUs
                         val pts = info.presentationTimeUs - baseUs + timelineOffsetUs
                         lastPtsUs = pts
-                        onEncoded(au, pts, key)
+                        try {
+                            onEncoded(au, pts, key)
+                        } catch (e: Exception) {
+                            // Un fotograma que falla no debe detener el codificador.
+                            Log.w(TAG, "fotograma no enviado", e)
+                        }
                     }
                 }
                 c.releaseOutputBuffer(idx, false)

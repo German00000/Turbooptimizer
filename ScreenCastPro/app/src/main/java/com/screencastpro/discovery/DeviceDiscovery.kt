@@ -45,7 +45,6 @@ class DeviceDiscovery(
     fun start() {
         if (running) return
         running = true
-        found.clear()
         acquireMulticast()
         startNsd()
         ssdpThread = Thread({

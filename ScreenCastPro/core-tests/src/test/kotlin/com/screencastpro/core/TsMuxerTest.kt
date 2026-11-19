@@ -101,7 +101,7 @@ class TsMuxerTest {
         assertEquals(expectedPts, decodePts(p))
         // El payload (Annex B) debe estar íntegro al final del PES.
         val payload = p.copyOfRange(14, p.size)
-        assertTrue(payload.contentEquals(au))
+        assertTrue(payload.contentEquals(byteArrayOf(0, 0, 0, 1, 0x09, 0xF0.toByte()) + au))
     }
 
     @Test

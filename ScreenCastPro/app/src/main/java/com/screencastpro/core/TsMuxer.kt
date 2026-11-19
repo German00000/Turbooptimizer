@@ -29,6 +29,8 @@ class TsMuxer(private val hasAudio: Boolean) {
         private const val PTS_WRAP = (1L shl 33)
         /** PAT/PMT se repiten al menos cada 100 ms: muchos demultiplexores de TV se sincronizan con ello. */
         private const val PSI_INTERVAL_90K = 9_000L
+        /** Delimitador de unidad de acceso H.264: 00 00 00 01 09 F0. */
+        private val AUD = byteArrayOf(0, 0, 0, 1, 0x09, 0xF0.toByte())
 
         private val CRC_TABLE = IntArray(256).also { table ->
             for (i in 0 until 256) {
@@ -86,7 +88,7 @@ class TsMuxer(private val hasAudio: Boolean) {
             writeTables()
             lastPsi90k = pts90k
         }
-        val pes = buildPes(STREAM_ID_VIDEO, pts90k, annexB, dataAlignment = true)
+        val pes = buildPes(STREAM_ID_VIDEO, pts90k, withAud(annexB), dataAlignment = true)
         emitPes(PID_VIDEO, pes, pcrBase = pts90k)
         return out.toByteArray()
     }
@@ -116,6 +118,22 @@ class TsMuxer(private val hasAudio: Boolean) {
             out[o + 3] = 0x10          // solo payload
         }
         return out
+    }
+
+    /**
+     * Antepone un AUD (NAL tipo 9) a la unidad de acceso si no lo trae. ISO/IEC 13818-1 y HLS lo exigen:
+     * muchos decodificadores de TV separan los fotogramas por el AUD. MediaCodec no lo incluye.
+     */
+    private fun withAud(annexB: ByteArray): ByteArray {
+        val nalIndex = when {
+            annexB.size >= 4 && annexB[0] == 0.toByte() && annexB[1] == 0.toByte() &&
+                annexB[2] == 0.toByte() && annexB[3] == 1.toByte() -> 4
+            annexB.size >= 3 && annexB[0] == 0.toByte() && annexB[1] == 0.toByte() &&
+                annexB[2] == 1.toByte() -> 3
+            else -> return AUD + annexB
+        }
+        if (annexB.size > nalIndex && (annexB[nalIndex].toInt() and 0x1F) == 9) return annexB
+        return AUD + annexB
     }
 
     private fun toPts90k(ptsUs: Long): Long {

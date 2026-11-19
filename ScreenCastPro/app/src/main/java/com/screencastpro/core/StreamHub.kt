@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
  * espera al siguiente keyframe para volver a sincronizar. Así un cliente lento nunca retrasa al
  * codificador ni acumula memoria, y se cuenta como evento de congestión para el control adaptativo.
  */
-class StreamHub(private val maxQueue: Int = 48) {
+class StreamHub(private val maxQueue: Int = 48, private val withHls: Boolean = true) {
 
     class Packet(val data: ByteArray, val enqueuedNs: Long)
 
@@ -79,7 +79,7 @@ class StreamHub(private val maxQueue: Int = 48) {
      */
     fun publish(chunk: ByteArray, ptsUs: Long, keyframe: Boolean) {
         if (chunk.isEmpty()) return
-        segmenter.append(chunk, ptsUs, keyframe)
+        if (withHls) segmenter.append(chunk, ptsUs, keyframe)
         val now = System.nanoTime()
         for (s in subscribers) {
             if (keyframe) s.synced = true

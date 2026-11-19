@@ -2,11 +2,13 @@ package com.screencastpro.discovery
 
 import com.screencastpro.DiagLog
 import com.screencastpro.core.Upnp
+import com.screencastpro.net.Lan
 import com.screencastpro.net.Http
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.MulticastSocket
 import java.net.SocketTimeoutException
 import java.net.URI
 
@@ -18,7 +20,9 @@ object SsdpDiscovery {
         val locations = LinkedHashSet<String>()
         val request = Upnp.msearchRequest(mxSeconds = 2).toByteArray(Charsets.US_ASCII)
         val group = InetAddress.getByName(Upnp.SSDP_ADDRESS)
-        DatagramSocket().use { socket ->
+        MulticastSocket().use { socket ->
+            // Multicast por la interfaz Wi-Fi: con datos móviles, la ruta por defecto puede no llegar a la LAN.
+            Lan.wifiIpv4()?.let { socket.setInterface(InetAddress.getByName(it)) }
             socket.soTimeout = 300
             repeat(2) { // UDP no es fiable: dos envíos
                 socket.send(DatagramPacket(request, request.size, group, Upnp.SSDP_PORT))

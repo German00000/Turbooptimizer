@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ScreenCast Pro</string>
+    <string name="start_stream">Transmitir pantalla</string>
+    <string name="stop_stream">Detener transmisión</string>
+    <string name="devices_found">Dispositivos encontrados</string>
+    <string name="connect">Conectar</string>
+    <string name="disconnect">Desconectar</string>
+    <string name="scan_again">Buscar de nuevo</string>
+    <string name="no_devices">No se han encontrado televisores. Comprueba que el teléfono y la TV están en la misma red Wi-Fi sin aislamiento de clientes.</string>
+    <string name="section_stream">Transmisión</string>
+    <string name="label_status">Estado</string>
+    <string name="label_device">Dispositivo</string>
+    <string name="label_fps">FPS</string>
+    <string name="label_resolution">Resolución</string>
+    <string name="label_bitrate">Bitrate</string>
+    <string name="label_latency">Latencia aprox.</string>
+    <string name="label_clients">Espectadores</string>
+    <string name="label_audio">Audio</string>
+    <string name="section_settings">Ajustes</string>
+    <string name="setting_resolution">Resolución</string>
+    <string name="setting_fps">FPS</string>
+    <string name="setting_bitrate">Bitrate</string>
+    <string name="setting_low_latency">Modo baja latencia</string>
+    <string name="setting_battery_saver">Modo ahorro de batería</string>
+    <string name="setting_auto_reconnect">Reconexión automática</string>
+    <string name="setting_internal_audio">Audio interno (Android 10+)</string>
+    <string name="miracast_button">Abrir ajustes de transmisión (Miracast)</string>
+    <string name="copy_urls">Copiar URL para reproductor HTTP</string>
+    <string name="urls_title">URL de la transmisión</string>
+    <string name="need_stream_first">Primero pulsa «Transmitir pantalla».</string>
+    <string name="permission_denied_projection">Se canceló el permiso de captura de pantalla.</string>
+    <string name="audio_fallback">Audio no disponible en este dispositivo: se transmite solo vídeo.</string>
+    <string name="audio_unsupported_os">Android 5–9 no permite capturar el audio de otras apps: se transmite solo vídeo.</string>
+    <string name="state_idle">Detenido</string>
+    <string name="state_starting">Iniciando…</string>
+    <string name="state_streaming">Transmitiendo</string>
+    <string name="state_connecting">Conectando con %1$s…</string>
+    <string name="state_connected">Conectado a %1$s</string>
+    <string name="state_reconnecting">Reconectando con %1$s…</string>
+    <string name="notification_channel">Transmisión de pantalla</string>
+    <string name="notification_text">Transmitiendo la pantalla a la red local</string>
+    <string name="notification_stop">Detener</string>
+</resources>

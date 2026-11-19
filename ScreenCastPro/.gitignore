@@ -1,0 +1,20 @@
+# Compilación y caches (los proyectos Gradle de este directorio)
+build/
+.gradle/
+app/build/
+core-tests/build/
+core-tests/.gradle/
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+local.properties
+captures/
+.cxx/
+.externalNativeBuild/
+
+# Firmas: nunca subir claves ni contraseñas
+keystore.properties
+*.jks
+*.keystore

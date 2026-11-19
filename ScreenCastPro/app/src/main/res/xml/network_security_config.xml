@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Los televisores de la red local hablan HTTP en claro (SOAP/DLNA y consultas de estado).
+  Desde Android 9 hace falta permitirlo explícitamente. El tráfico sigue siendo solo LAN:
+  la app no conecta con servidores de Internet.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

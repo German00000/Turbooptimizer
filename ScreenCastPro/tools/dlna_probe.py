@@ -65,13 +65,26 @@ def didl(url, proto):
     )
 
 
+def phone_clients(base):
+    """Número de espectadores que el teléfono ve conectados (0 si el token es incorrecto o no hay flujo)."""
+    try:
+        with urllib.request.urlopen(base + "/status", timeout=5) as r:
+            m = re.search(r'"clients":(\d+)', r.read().decode(errors="ignore"))
+            return int(m.group(1)) if m else -1
+    except urllib.error.HTTPError as e:
+        return f"HTTP {e.code} (¿token incorrecto?)"
+    except Exception as e:
+        return f"sin respuesta ({e})"
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
     base = sys.argv[1].rstrip("/")
     control = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_CONTROL
-    print(f"TV: {control}\nTeléfono: {base}\n")
+    print(f"TV: {control}\nTeléfono: {base}")
+    print("Verificación de token:", phone_clients(base), "\n")
     for proto in PROFILES:
         url = base + ("/live.mp4" if "mp4" in proto else "/live.ts")
         soap(control, "Stop", "<InstanceID>0</InstanceID>")
@@ -86,7 +99,8 @@ def main():
         st, txt = soap(control, "GetTransportInfo", "<InstanceID>0</InstanceID>")
         m = re.search(r"<CurrentTransportState>([^<]+)", txt)
         estado = m.group(1) if m else f"error {fault(txt)}"
-        print(f"{proto:30} estado: {estado}")
+        clientes = phone_clients(base)
+        print(f"{proto:30} estado TV: {estado:20} espectadores en el teléfono: {clientes}")
     soap(control, "Stop", "<InstanceID>0</InstanceID>")
 
 

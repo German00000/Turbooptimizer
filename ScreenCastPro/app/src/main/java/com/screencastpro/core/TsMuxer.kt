@@ -94,6 +94,23 @@ class TsMuxer(private val hasAudio: Boolean) {
         return out.toByteArray()
     }
 
+    /**
+     * Paquetes nulos (PID 0x1FFF). Los decodificadores los descartan; sirven para que el flujo no quede
+     * sin datos cuando la pantalla está quieta y no hay vídeo que enviar.
+     */
+    @Synchronized
+    fun nullPackets(count: Int): ByteArray {
+        val out = ByteArray(count * TS_PACKET) { 0xFF.toByte() }
+        for (i in 0 until count) {
+            val o = i * TS_PACKET
+            out[o] = 0x47
+            out[o + 1] = 0x1F          // PID 0x1FFF: 5 bits altos
+            out[o + 2] = 0xFF.toByte() // PID: 8 bits bajos
+            out[o + 3] = 0x10          // solo payload
+        }
+        return out
+    }
+
     private fun toPts90k(ptsUs: Long): Long {
         val v = (maxOf(0L, ptsUs) * 9L) / 100L  // us → 90 kHz
         return v % PTS_WRAP

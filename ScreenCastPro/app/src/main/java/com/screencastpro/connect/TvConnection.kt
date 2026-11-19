@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.screencastpro.DiagLog
+import com.screencastpro.SessionState
 import com.screencastpro.discovery.Protocol
 import com.screencastpro.discovery.TvDevice
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,7 @@ object TvConnection {
     private const val MAX_ATTEMPTS = 5
     private const val RETRY_DELAY_MS = 3000L
     private const val DLNA_CHECK_MS = 10_000L
+    private const val MAX_STALLED_RELOADS = 3
 
     private val main = Handler(Looper.getMainLooper())
     private val io: ExecutorService = Executors.newSingleThreadExecutor { r ->
@@ -43,6 +45,10 @@ object TvConnection {
     private var autoReconnect = true
     private var attempts = 0
     private var cast: CastConnector? = null
+    /** Comprobaciones seguidas con la TV en PLAYING y sin espectadores. */
+    @Volatile private var stalledChecks = 0
+    /** Recargas hechas porque la TV dejó de leer el flujo. */
+    @Volatile private var stalledReloads = 0
 
     /** Cada conexión tiene un número; las respuestas de conexiones anteriores se ignoran. */
     private var generation = 0
@@ -57,11 +63,25 @@ object TvConnection {
                 val reload: Boolean = try {
                     val s = DlnaConnector.transportState(av)
                     DiagLog.i("TV", "vigilancia DLNA: estado $s")
-                    s == "STOPPED" || s == "NO_MEDIA_PRESENT"
+                    val viewers = SessionState.stats.value.clients
+                    if (viewers > 0) stalledReloads = 0
+                    stalledChecks = if (s == "PLAYING" && viewers == 0) stalledChecks + 1 else 0
+                    if (stalledChecks >= 2) DiagLog.w("TV", "la TV dice PLAYING pero no lee el flujo")
+                    s == "STOPPED" || s == "NO_MEDIA_PRESENT" || stalledChecks >= 2
                 } catch (_: Exception) {
                     true
                 }
                 if (reload && autoReconnect) {
+                    if (stalledChecks >= 2) {
+                        stalledReloads++
+                        stalledChecks = 0
+                        if (stalledReloads > MAX_STALLED_RELOADS) {
+                            main.post {
+                                if (gen == generation) setState(State.Error(dev, "La TV no lee el flujo tras varios intentos (ver registro)"))
+                            }
+                            return@execute
+                        }
+                    }
                     try {
                         DlnaConnector.load(av, dlnaUrl ?: return@execute, TITLE)
                     } catch (_: Exception) {
@@ -96,6 +116,8 @@ object TvConnection {
         this.hlsUrl = hlsUrl
         this.autoReconnect = autoReconnect
         attempts = 0
+        stalledChecks = 0
+        stalledReloads = 0
         setState(State.Connecting(device))
         startConnect(device)
     }

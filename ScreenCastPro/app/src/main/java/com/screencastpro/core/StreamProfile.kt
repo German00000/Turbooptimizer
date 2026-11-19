@@ -61,6 +61,21 @@ object ProfileMath {
         return if (batterySaver) (clamped * 0.6).toInt() else clamped
     }
 
+    /** Macrobloques de 16×16 de un cuadro. */
+    fun macroblocks(width: Int, height: Int): Int = ((width + 15) / 16) * ((height + 15) / 16)
+
+    /** Macrobloques por segundo máximos del nivel H.264 4.1, el que decodifican las TV DLNA. */
+    const val LEVEL_41_MAX_MBPS = 245_760
+
+    /**
+     * FPS máximos que caben en el nivel 4.1 para ese tamaño. Por encima, el codificador usa nivel 4.2 o
+     * superior (en el teléfono probado, 720×1600 a 60 FPS → nivel 4.2), que muchas TV no decodifican.
+     */
+    fun capFpsForLevel41(width: Int, height: Int, fps: Int): Int {
+        val maxFps = LEVEL_41_MAX_MBPS / maxOf(1, macroblocks(width, height))
+        return listOf(60, 30, 24).firstOrNull { it <= fps && it <= maxFps } ?: 24
+    }
+
     /** Multiplicador de bitrate del ajuste manual del usuario. */
     fun bitrateScale(choice: BitrateChoice): Double = when (choice) {
         BitrateChoice.AUTO -> 1.0

@@ -74,6 +74,9 @@ class ScreenCaptureService : Service() {
         private const val NOTIF_ID = 1001
         private const val TICK_MS = 2000L
         private const val IDLE_AFTER_MS = 20_000L
+        private const val KEEPALIVE_MS = 250L
+        private const val KEEPALIVE_AFTER_MS = 500L
+        private const val KEEPALIVE_PACKETS = 4
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -87,6 +90,8 @@ class ScreenCaptureService : Service() {
     @Volatile private var mp4Hub: StreamHub? = null
     @Volatile private var fmp4: com.screencastpro.core.Fmp4Muxer? = null
     @Volatile private var spsLogged = false
+    @Volatile private var lastVideoMs = 0L
+    @Volatile private var lastPtsUs = 0L
     private var server: StreamServer? = null
     private var controller: AdaptiveController? = null
     private var token = ""
@@ -123,6 +128,21 @@ class ScreenCaptureService : Service() {
             if (!started) return
             onTick()
             main.postDelayed(this, TICK_MS)
+        }
+    }
+
+    /** Si no llega vídeo un rato, envía paquetes nulos para que la TV no cierre el flujo por inactividad. */
+    private val keepAlive = object : Runnable {
+        override fun run() {
+            if (!started) return
+            val h = hub
+            val m = muxer
+            if (h != null && m != null && !idle && h.subscriberCount > 0 &&
+                System.currentTimeMillis() - lastVideoMs > KEEPALIVE_AFTER_MS
+            ) {
+                h.publish(m.nullPackets(KEEPALIVE_PACKETS), lastPtsUs, false)
+            }
+            main.postDelayed(this, KEEPALIVE_MS)
         }
     }
 
@@ -211,7 +231,11 @@ class ScreenCaptureService : Service() {
 
         val effShort = if (battery) minOf(shortSide, 720) else shortSide
         val effFps = if (battery) minOf(fps, 30) else fps
-        ladder = ProfileMath.ladder(effShort, effFps)
+        // Escalera de calidad con FPS que decodifica el nivel 4.1 (p. ej., 720×1600 a 60 → 30).
+        ladder = ProfileMath.ladder(effShort, effFps).map { lvl ->
+            val (w, h) = ProfileMath.fitSize(srcW, srcH, lvl.shortSide)
+            lvl.copy(fps = ProfileMath.capFpsForLevel41(w, h, lvl.fps))
+        }.distinct()
         topLevel = Capabilities.negotiateLevel(Capabilities.pickEncoder(), ladder, srcW, srcH)
         currentLevel = topLevel
         controller = AdaptiveController(
@@ -238,6 +262,7 @@ class ScreenCaptureService : Service() {
         acquireWifiLock()
         ensureForeground(getString(R.string.notification_text))
         main.postDelayed(tick, TICK_MS)
+        main.postDelayed(keepAlive, KEEPALIVE_MS)
         publishState()
         DiagLog.i(TAG, "Transmitiendo ${ladder[currentLevel]} en puerto $PORT, audio=$audioActive")
     }
@@ -290,6 +315,8 @@ class ScreenCaptureService : Service() {
         val h = hub ?: return
         val chunk = m.videoAccessUnit(au, ptsUs, key)
         framesOut.incrementAndGet()
+        lastVideoMs = System.currentTimeMillis()
+        lastPtsUs = ptsUs
         bytesOut.addAndGet(chunk.size.toLong())
         h.publish(chunk, ptsUs, key)
 
@@ -452,6 +479,7 @@ class ScreenCaptureService : Service() {
         DiagLog.i(TAG, "transmisión detenida")
         started = false
         main.removeCallbacks(tick)
+        main.removeCallbacks(keepAlive)
         try { unregisterComponentCallbacks(componentCallbacks) } catch (_: Exception) {}
         virtualDisplay?.release()
         virtualDisplay = null

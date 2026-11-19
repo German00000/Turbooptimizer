@@ -1,0 +1,124 @@
+package com.turbooptimizer.monitor
+
+import com.turbooptimizer.core.shizuku.ShellCommands
+import com.turbooptimizer.core.shizuku.ShizukuManager
+
+/**
+ * Monitor de FPS aproximados mediante SurfaceFlinger.
+ *
+ * Usa Shizuku para consultar el contador de frames del sistema.
+ * El resultado representa los frames presentados por SurfaceFlinger,
+ * por lo que puede aproximar los FPS durante un juego a pantalla completa.
+ */
+class FpsMonitor(private val shizuku: ShizukuManager) {
+
+    private var lastCount: Long? = null
+    private var lastTimeNs = 0L
+    private var failures = 0
+
+    val supported: Boolean
+        get() = shizuku.isReady && failures < 5
+
+    fun reset() {
+        lastCount = null
+        lastTimeNs = 0L
+        failures = 0
+    }
+
+    suspend fun sample(): Float? {
+        if (!supported) return null
+
+        val result = shizuku.exec(
+            ShellCommands.surfaceFlingerFrames(),
+            2_000
+        )
+
+        if (!result.isSuccess) {
+            failures++
+            return null
+        }
+
+        val count = parseFrameCount(result.stdout)
+
+        if (count == null) {
+            failures++
+            return null
+        }
+
+        failures = 0
+
+        val now = System.nanoTime()
+        val previousCount = lastCount
+        val previousTime = lastTimeNs
+
+        lastCount = count
+        lastTimeNs = now
+
+        if (previousCount == null || previousTime == 0L) {
+            return null
+        }
+
+        var delta = count - previousCount
+
+        // Contador de 32 bits.
+        if (delta < 0) {
+            delta += 0x1_0000_0000L
+        }
+
+        val seconds =
+            (now - previousTime) / 1_000_000_000.0
+
+        if (seconds <= 0.2) {
+            return null
+        }
+
+        return (delta / seconds)
+            .toFloat()
+            .coerceIn(0f, 240f)
+    }
+
+    /**
+     * Intenta extraer el contador de frames de distintas
+     * representaciones de Parcel que pueden devolver
+     * diferentes versiones de Android.
+     */
+    private fun parseFrameCount(output: String): Long? {
+        val text = output.trim()
+
+        // Formato habitual:
+        // Parcel( 0000001a '....' )
+        Regex("""Parcel\(\s*([0-9a-fA-F]{8,16})""")
+            .find(text)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let {
+                return runCatching {
+                    it.toLong(16)
+                }.getOrNull()
+            }
+
+        // Busca una secuencia hexadecimal de 8+ caracteres
+        // dentro de la respuesta.
+        Regex("""\b([0-9a-fA-F]{8,16})\b""")
+            .find(text)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let {
+                return runCatching {
+                    it.toLong(16)
+                }.getOrNull()
+            }
+
+        // Algunas respuestas pueden contener directamente
+        // un número decimal.
+        Regex("""\b\d{4,}\b""")
+            .find(text)
+            ?.groupValues
+            ?.getOrNull(0)
+            ?.let {
+                return it.toLongOrNull()
+            }
+
+        return null
+    }
+}

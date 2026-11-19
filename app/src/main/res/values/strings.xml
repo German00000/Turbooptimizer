@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TurboOptimizer</string>
+    <string name="channel_game">Game Booster</string>
+    <string name="channel_recorder">Grabador de pantalla</string>
+</resources>

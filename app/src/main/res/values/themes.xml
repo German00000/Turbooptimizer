@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="turbo_background">#FF0B0F14</color>
+    <color name="turbo_primary">#FF00D1B2</color>
+    <color name="ic_launcher_background">#FF0B0F14</color>
+
+    <style name="Theme.TurboOptimizer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/turbo_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">@color/turbo_primary</item>
+    </style>
+</resources>

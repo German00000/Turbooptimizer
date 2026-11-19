@@ -258,7 +258,7 @@ class ScreenCaptureService : Service() {
         }
         // Cada encoder tiene su propio segmento de inicio (resolución distinta): se reinicia el flujo MP4.
         mp4Hub?.resetStream()
-        fmp4 = com.screencastpro.core.Fmp4Muxer(p.width, p.height, p.fps)
+        fmp4 = com.screencastpro.core.Fmp4Muxer(p.width, p.height, p.fps, withAudio = audioActive)
         val old = encoder
         encoder = enc
         currentLevel = level
@@ -305,6 +305,13 @@ class ScreenCaptureService : Service() {
         if (chunk.isEmpty()) return
         bytesOut.addAndGet(chunk.size.toLong())
         h.publish(chunk, ptsUs, false)
+
+        // Mismo audio para el flujo MP4 (DLNA): una trama AAC por fragmento.
+        val f = fmp4
+        val m4 = mp4Hub
+        if (f != null && m4 != null && m4.initSegment != null) {
+            m4.publish(f.audioFragment(adts, ptsUs), ptsUs, false)
+        }
     }
 
     // ---------------------------------------------------------------- control

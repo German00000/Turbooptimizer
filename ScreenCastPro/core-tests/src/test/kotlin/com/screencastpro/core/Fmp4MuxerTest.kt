@@ -109,4 +109,48 @@ class Fmp4MuxerTest {
         assertEquals(1, seq(f1))
         assertEquals(2, seq(f2))
     }
+
+    private fun adts(payload: ByteArray): ByteArray = TsMuxer.adtsHeader(payload.size, 44100, 2) + payload
+
+    @Test
+    fun initWithAudioHasTwoTracksAndAacConfig() {
+        val m = Fmp4Muxer(640, 360, 30, withAudio = true)
+        m.extractParams(annexB(sps, pps))
+        val init = m.initSegment()
+        assertTrue(contains(init, "soun"))
+        assertTrue(contains(init, "mp4a"))
+        assertTrue(contains(init, "esds"))
+        // AudioSpecificConfig AAC-LC, 44,1 kHz, 2 canales
+        assertTrue(contains(init, String(byteArrayOf(0x12, 0x10), Charsets.ISO_8859_1)))
+        // Dos trex: uno por pista
+        val count = Regex("trex").findAll(String(init, Charsets.ISO_8859_1)).count()
+        assertEquals(2, count)
+    }
+
+    @Test
+    fun initWithoutAudioHasOnlyVideo() {
+        val m = Fmp4Muxer(640, 360, 30)
+        m.extractParams(annexB(sps, pps))
+        assertTrue(!contains(m.initSegment(), "soun"))
+    }
+
+    @Test
+    fun audioFragmentCarriesRawAacWithoutAdtsHeader() {
+        val m = Fmp4Muxer(640, 360, 30, withAudio = true)
+        val raw = byteArrayOf(0x21, 0x10, 0x04, 0x60, 0x0C)
+        val frag = m.audioFragment(adts(raw), 0)
+        val boxes = topBoxes(frag)
+        assertEquals(listOf("moof", "mdat"), boxes.map { it.first })
+        val mdat = boxes[1]
+        val payload = frag.copyOfRange(mdat.second + 8, mdat.second + mdat.third)
+        assertTrue(payload.contentEquals(raw))
+        // Pista de audio: track_ID 2 en tfhd
+        assertTrue(contains(frag, String(byteArrayOf(0, 0, 0, 2), Charsets.ISO_8859_1)))
+    }
+
+    @Test
+    fun audioFragmentIsEmptyWithoutAudioTrack() {
+        val m = Fmp4Muxer(640, 360, 30)
+        assertEquals(0, m.audioFragment(adts(byteArrayOf(1, 2, 3)), 0).size)
+    }
 }

@@ -1,7 +1,9 @@
 package com.turbooptimizer.monitor
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FpsMonitorTest {
@@ -67,27 +69,39 @@ class FpsMonitorTest {
     }
 
     @Test fun computesFpsFromPresentTimes() {
-        val stats = FpsMonitor.computeLatencyStats(presents(120, 10_000_000L, now), now)!!
-        assertEquals(100f, stats.fps, 0.5f)
+        assertEquals(100f, FpsMonitor.computeLatencyFps(presents(120, 10_000_000L, now))!!, 0.5f)
     }
 
-    @Test fun reportsZeroWhenNothingPresentedRecently() {
-        val stats = FpsMonitor.computeLatencyStats(presents(20, 10_000_000L, now - 3_000_000_000L), now)!!
-        assertEquals(0f, stats.fps, 0f)
+    @Test fun fpsDoesNotDependOnSystemClock() {
+        // Las marcas de SurfaceFlinger pueden estar en cualquier base de reloj: solo importan sus diferencias.
+        val a = FpsMonitor.computeLatencyFps(presents(60, 16_666_667L, 1_000_000_000L))
+        val b = FpsMonitor.computeLatencyFps(presents(60, 16_666_667L, 5_000_000_000_000_000L))
+        assertEquals(a!!, b!!, 0.001f)
+        assertEquals(60f, a, 0.5f)
     }
 
     @Test fun needsAtLeastTwoFrames() {
-        assertNull(FpsMonitor.computeLatencyStats(listOf(now), now))
-        assertNull(FpsMonitor.computeLatencyStats(emptyList(), now))
+        assertNull(FpsMonitor.computeLatencyFps(listOf(now)))
+        assertNull(FpsMonitor.computeLatencyFps(emptyList()))
     }
 
-    @Test fun rejectsTimestampsFromAnotherClock() {
-        assertNull(FpsMonitor.computeLatencyStats(presents(10, 10_000_000L, now + 60_000_000_000L), now))
+    @Test fun staleOnlyWhenNewestMarkDidNotChange() {
+        assertTrue(FpsMonitor.isStale(changedAtNs = 0L, nowNs = 2_000_000_000L))
+        assertFalse(FpsMonitor.isStale(changedAtNs = 1_000_000_000L, nowNs = 2_000_000_000L))
     }
 
     @Test fun usesBufferSpanWhenBufferIsTruncated() {
         // 128 fotogramas a 240 Hz cubren ~0,5 s: el cálculo debe seguir siendo 240 FPS.
-        val stats = FpsMonitor.computeLatencyStats(presents(128, 4_166_667L, now), now)!!
-        assertEquals(240f, stats.fps, 1f)
+        assertEquals(240f, FpsMonitor.computeLatencyFps(presents(128, 4_166_667L, now))!!, 1f)
+    }
+
+    // --- Texto de estado (sustituye al «N/D» permanente) ---
+
+    @Test fun placeholderExplainsWhyThereIsNoValue() {
+        assertEquals("Sin permisos", FpsMonitor.placeholder(FpsMonitor.STATUS_NO_PERMISSION))
+        assertEquals("Shizuku inactivo", FpsMonitor.placeholder(FpsMonitor.STATUS_SHIZUKU_OFF))
+        assertEquals("No compatible", FpsMonitor.placeholder("No compatible: service call 1013 sin respuesta"))
+        assertEquals("Midiendo…", FpsMonitor.placeholder("Reintentando: --list falló"))
+        assertEquals("Midiendo…", FpsMonitor.placeholder(FpsMonitor.NO_MEASUREMENT))
     }
 }

@@ -18,6 +18,11 @@ import kotlin.math.abs
 
 data class OverlayStats(
     val fps: String,
+    val min: String,
+    val max: String,
+    val avg: String,
+    /** Método de medición en una palabra (p. ej. «SurfaceFlinger»). */
+    val measure: String,
     val temp: String,
     val ram: String,
     val cpu: String,
@@ -27,7 +32,8 @@ data class OverlayStats(
 
 /**
  * Panel flotante minimalista (TYPE_APPLICATION_OVERLAY, no enfocable).
- * - Arrastrar: mover.  - Toque: alternar compacto/completo.  - «×»: ocultar por completo.
+ * - Arrastrar el panel: mover.  - Toque: alternar compacto/completo.  - «×»: ocultar por completo.
+ * - Arrastrar el tirador «⇲» (esquina inferior derecha) horizontalmente: cambiar el tamaño del texto.
  * Usa Views clásicas (sin Compose) para ser ligero y no depender de un ciclo de vida.
  */
 class OverlayController(private val context: Context, private val onHideRequested: () -> Unit) {
@@ -37,6 +43,8 @@ class OverlayController(private val context: Context, private val onHideRequeste
     private var text: TextView? = null
     private var compact = false
     private var last: OverlayStats? = null
+    /** Factor de escala del texto (1 = 11 sp). Se conserva mientras viva el controlador. */
+    private var scale = 1f
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -59,7 +67,7 @@ class OverlayController(private val context: Context, private val onHideRequeste
         if (root != null || !Settings.canDrawOverlays(context)) return
         val tv = TextView(context).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_SP * scale)
             typeface = Typeface.MONOSPACE
             setLineSpacing(0f, 1.1f)
             text = "TurboOptimizer"
@@ -70,6 +78,14 @@ class OverlayController(private val context: Context, private val onHideRequeste
             text = "  ×"
             contentDescription = "Ocultar overlay"
             setOnClickListener { onHideRequested() }
+        }
+        val resize = TextView(context).apply {
+            setTextColor(Color.parseColor("#B0FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            text = " ⇲"
+            contentDescription = "Cambiar tamaño del overlay"
+            setPadding(dp(4), 0, 0, 0)
+            setOnTouchListener(resizeTouch(tv))
         }
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -82,6 +98,7 @@ class OverlayController(private val context: Context, private val onHideRequeste
             }
             addView(tv)
             addView(close)
+            addView(resize)
         }
         var downX = 0f
         var downY = 0f
@@ -123,6 +140,27 @@ class OverlayController(private val context: Context, private val onHideRequeste
         }
     }
 
+    /** Arrastrar el tirador hacia la derecha agranda el texto; hacia la izquierda, lo reduce. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun resizeTouch(tv: TextView): View.OnTouchListener {
+        var downX = 0f
+        var startScale = scale
+        return View.OnTouchListener { _, e ->
+            when (e.action) {
+                MotionEvent.ACTION_DOWN -> { downX = e.rawX; startScale = scale; true }
+                MotionEvent.ACTION_MOVE -> {
+                    val next = (startScale + (e.rawX - downX) / dp(120)).coerceIn(MIN_SCALE, MAX_SCALE)
+                    if (next != scale) {
+                        scale = next
+                        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_SP * scale)
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
     fun update(stats: OverlayStats) {
         last = stats
         render(stats)
@@ -130,13 +168,19 @@ class OverlayController(private val context: Context, private val onHideRequeste
 
     private fun render(s: OverlayStats) {
         val tv = text ?: return
-        tv.text = if (compact) "${s.fps} · ${s.temp}"
-        else "FPS ${s.fps}   ${s.time}\nTemp ${s.temp}  RAM ${s.ram}\nCPU ${s.cpu}  BAT ${s.battery}"
+        tv.text = if (compact) "FPS ${s.fps} · ${s.temp}"
+        else "FPS ${s.fps}   ${s.time}\nMín ${s.min}  Máx ${s.max}  Prom ${s.avg}\nTemp ${s.temp}  RAM ${s.ram}\nCPU ${s.cpu}  BAT ${s.battery}\nMedición: ${s.measure}"
     }
 
     fun hide() {
         root?.let { v -> runCatching { wm.removeViewImmediate(v) } }
         root = null
         text = null
+    }
+
+    private companion object {
+        const val BASE_SP = 11f
+        const val MIN_SCALE = 0.75f
+        const val MAX_SCALE = 2f
     }
 }

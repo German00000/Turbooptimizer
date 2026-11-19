@@ -18,6 +18,7 @@ import com.turbooptimizer.TurboApp
 import com.turbooptimizer.ui.screens.AppsScreen
 import com.turbooptimizer.ui.screens.CleanerScreen
 import com.turbooptimizer.ui.screens.DeviceInfoScreen
+import com.turbooptimizer.ui.screens.DiagnosticsScreen
 import com.turbooptimizer.ui.screens.GameBoosterScreen
 import com.turbooptimizer.ui.screens.HomeScreen
 import com.turbooptimizer.ui.screens.OptimizeScreen
@@ -35,6 +36,7 @@ object Routes {
     const val RECORDER = "recorder"
     const val DEVICE = "device"
     const val SECURITY = "security"
+    const val DIAGNOSTICS = "diagnostics"
 }
 
 /** Crea un ViewModel con acceso al [AppContainer] (inyección manual). */
@@ -66,5 +68,6 @@ fun TurboNavHost() {
         composable(Routes.RECORDER) { RecorderScreen(back) }
         composable(Routes.DEVICE) { DeviceInfoScreen(back) }
         composable(Routes.SECURITY) { SecurityScreen(back) }
+        composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(back) }
     }
 }

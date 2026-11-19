@@ -1,9 +1,11 @@
 package com.turbooptimizer.monitor
 
-import android.util.Log
+import com.turbooptimizer.core.diagnostics.DiagLevel
+import com.turbooptimizer.core.diagnostics.Diagnostics
 import com.turbooptimizer.core.shizuku.CommandPolicy
 import com.turbooptimizer.core.shizuku.ShellCommands
 import com.turbooptimizer.core.shizuku.ShizukuManager
+import com.turbooptimizer.core.shizuku.ShizukuStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,16 +15,21 @@ import kotlinx.coroutines.sync.withLock
 /**
  * FPS del juego en primer plano, por orden de preferencia (todo vía Shizuku, solo lectura):
  *
- * 1. PRINCIPAL: `dumpsys SurfaceFlinger --latency <capa>`. Cada fila trae el instante real en que
- *    SurfaceFlinger presentó el fotograma (última columna). Se busca la capa del paquete con
- *    `dumpsys SurfaceFlinger --list` y se usa la que más recientemente presentó.
+ * 1. PRINCIPAL: `dumpsys SurfaceFlinger --latency <capa>`. Cada fila trae instantes de presentación
+ *    de SurfaceFlinger. Se busca la capa del paquete con `dumpsys SurfaceFlinger --list` y se usa la
+ *    que más recientemente presentó.
  * 2. ALTERNATIVO: `service call SurfaceFlinger 1013` (contador global de composiciones, delta entre muestras).
  *    Mezcla todas las capas, así que es menos preciso.
- * 3. Sin datos: null («N/D»). Nunca se inventa un valor.
+ * 3. Sin datos: null. El motivo se expone en [status] («Midiendo…», «Sin permisos», «No compatible»…).
+ *    Nunca se inventa un valor.
  *
- * Limitaciones: mide fotogramas presentados por el sistema, no los que dibuja el juego. Si la pantalla
- * no cambia, SurfaceFlinger no presenta nada nuevo y el valor baja a 0. La frecuencia del panel
- * no se usa como FPS. Los logs con tag [TAG] son diagnóstico temporal.
+ * Diseño temporal: los instantes de SurfaceFlinger se usan solo entre sí (diferencias entre marcas).
+ * No se comparan con `System.nanoTime()`, porque la base de reloj de SurfaceFlinger no está
+ * documentada y una discrepancia la dejaría sin datos para siempre. La frescura se mide localmente:
+ * si la marca más reciente de la capa no cambia durante [STALE_NS], el juego no presenta nada → 0.
+ *
+ * Limitaciones: mide fotogramas presentados por el sistema, no los que dibuja el juego. La frecuencia
+ * del panel no se usa como FPS. Los logs con tag [TAG] son diagnóstico.
  *
  * @param maxRefreshHz frecuencia máxima de la pantalla; muestras por encima se consideran erróneas.
  */
@@ -39,13 +46,29 @@ class FpsMonitor(
         data object Failed : Reading
     }
 
+    /** Última marca de presentación vista en una capa y el instante local en que cambió. */
+    private class PresentTrack(val newest: Long, val changedAtNs: Long)
+
     private val mutex = Mutex()
     private val _status = MutableStateFlow(NO_MEASUREMENT)
 
-    /** Estado legible de la última muestra (diagnóstico y «N/D» explicado en la UI). */
+    /** Estado legible de la última muestra (diagnóstico y placeholder explicado en la UI). */
     val status: StateFlow<String> = _status.asStateFlow()
+
+    private val tracker = FpsTracker()
+    private val _summary = MutableStateFlow<FpsSummary?>(null)
+    /** Mínimo, máximo y promedio de las muestras aceptadas desde el último [reset]. */
+    val summary: StateFlow<FpsSummary?> = _summary.asStateFlow()
+
     private var failReason: String = NO_MEASUREMENT
+    private var latencyReason: String = "sin intentar"
+    private var compositeReason: String = "sin intentar"
+    /** true si SurfaceFlinger rechaza el contador a Shizuku (p. ej. «Operation not permitted»): no se vuelve a llamar. */
+    private var compositeDenied = false
+    private var lastAttemptNs = 0L
+    private var lastLatencyError: String = "sin datos de latencia"
     private var cachedLayer: String? = null
+    private val presentTracks = HashMap<String, PresentTrack>()
     private var lastCount: Long? = null
     private var lastTimeNs = 0L
     private var smoothed: Float? = null
@@ -56,66 +79,104 @@ class FpsMonitor(
     /** false tras [MAX_FAILURES] fallos seguidos; [reset] lo vuelve a intentar (p. ej. en otra sesión). */
     val supported: Boolean get() = shizuku.isReady && consecutiveFailures < MAX_FAILURES
 
+    /**
+     * Cambia el estado legible y lo registra solo cuando cambia. Así el diagnóstico muestra
+     * el motivo de cada N/D (sin permisos, Shizuku inactivo, reintentos, no compatible…).
+     */
+    private fun setStatus(value: String) {
+        if (_status.value == value) return
+        _status.value = value
+        val level = when {
+            value.startsWith("Presentados") || value.startsWith("Contador") -> DiagLevel.INFO
+            value == NO_MEASUREMENT || value.startsWith(STATUS_MEASURING) -> DiagLevel.DEBUG
+            else -> DiagLevel.WARN
+        }
+        val text = if (level == DiagLevel.INFO) "FPS medido: $value"
+        else "Medidor sin FPS (se muestra «${placeholder(value)}»). Motivo: $value"
+        Diagnostics.record(level, TAG, text)
+    }
+
     suspend fun reset() = mutex.withLock {
-        _status.value = NO_MEASUREMENT
+        setStatus(NO_MEASUREMENT)
         cachedLayer = null
+        presentTracks.clear()
         lastCount = null
         lastTimeNs = 0L
         smoothed = null
         lastMethod = null
         consecutiveFailures = 0
         samples = 0
+        compositeDenied = false
+        latencyReason = "sin intentar"
+        compositeReason = "sin intentar"
+        lastAttemptNs = 0L
+        tracker.reset()
+        _summary.value = null
     }
 
     /**
      * Toma una muestra. Devuelve null si no hay referencia todavía, si la muestra no es fiable o si el
-     * sistema no permite la consulta. [packageName] es el juego en primer plano (método principal).
-     * Pensado para llamarse ~1 vez por segundo.
+     * sistema no permite la consulta (en ese caso [status] explica el motivo).
+     * [packageName] es el juego en primer plano (método principal). Pensado para llamarse ~2 veces por segundo.
      */
     suspend fun sample(packageName: String? = null): Float? = mutex.withLock {
         if (!shizuku.isReady) {
-            _status.value = "Requiere Shizuku"
+            setStatus(shizukuProblemStatus())
             return@withLock null
         }
-        if (!supported) {
-            _status.value = "Sin datos: fallos repetidos (reinicia la sesión)"
+        val nowNs = System.nanoTime()
+        if (!supported && nowNs - lastAttemptNs < RETRY_NS) {
+            setStatus("No compatible: $failReason (nuevo intento en unos segundos)")
             return@withLock null
         }
+        lastAttemptNs = nowNs
         samples++
 
-        val latency = packageName?.takeIf { CommandPolicy.isValidPackage(it) }?.let { sampleLatency(it) }
+        val latency = if (packageName != null && CommandPolicy.isValidPackage(packageName)) {
+            sampleLatency(packageName)
+        } else {
+            latencyReason = "paquete del juego no válido"
+            null
+        }
         val reading: Reading = if (latency is Reading.Value) latency else sampleComposite()
         val method = if (latency is Reading.Value) Method.LATENCY else Method.COMPOSITE
 
         val fps = when (reading) {
             is Reading.Value -> reading.fps
             Reading.Warmup -> {
-                _status.value = "Midiendo…"
+                setStatus(STATUS_MEASURING)
                 return@withLock null
             }
             Reading.Failed -> {
                 consecutiveFailures++
+                failReason = "capa: $latencyReason · contador: $compositeReason"
                 cachedLayer = null
-                _status.value = "N/D: ${failReason}"
-                Log.w(TAG, "Sin FPS (fallo $consecutiveFailures/$MAX_FAILURES): $failReason")
+                setStatus(if (consecutiveFailures >= MAX_FAILURES) "No compatible: $failReason" else "Reintentando: $failReason")
+                Diagnostics.w(TAG, "Error al obtener FPS (fallo $consecutiveFailures de $MAX_FAILURES): $failReason")
                 return@withLock null
             }
         }
         consecutiveFailures = 0
-        _status.value = if (method == Method.LATENCY) "Presentados por SurfaceFlinger (capa del juego)"
-        else "Contador global de SurfaceFlinger (aproximado)"
+        setStatus(
+            if (method == Method.LATENCY) "Presentados por SurfaceFlinger (capa del juego)"
+            else "Contador global de SurfaceFlinger (aproximado)",
+        )
 
         if (method != lastMethod) {
-            Log.i(TAG, "Método de FPS: $method")
+            Diagnostics.i(TAG, "Método de FPS: $method")
             smoothed = null
             lastMethod = method
         }
-        if (samples % LOG_EVERY == 1) Log.i(TAG, "Muestra #$samples: ${"%.1f".format(fps)} FPS via $method")
+        if (samples % LOG_EVERY == 1) Diagnostics.i(TAG, "Muestra #$samples: ${"%.1f".format(fps)} FPS via $method")
 
         if (fps > maxRefreshHz().coerceAtLeast(30f) * TOLERANCE) {
-            Log.w(TAG, "Muestra descartada, valor imposible: $fps")
+            Diagnostics.w(TAG, "Muestra descartada, valor imposible: ${"%.1f".format(fps)} FPS")
             return@withLock smoothed
         }
+
+        // Mínimo/máximo/promedio con los valores sin suavizar; el suavizado solo afecta al valor instantáneo.
+        tracker.add(fps)
+        _summary.value = tracker.summary()
 
         // Media móvil exponencial: evita saltos bruscos en el overlay.
         val value = smoothed?.let { it + SMOOTHING * (fps - it) } ?: fps
@@ -123,63 +184,102 @@ class FpsMonitor(
         value
     }
 
+    private fun shizukuProblemStatus(): String = when (shizuku.state.value.status) {
+        ShizukuStatus.NO_PERMISSION -> STATUS_NO_PERMISSION
+        ShizukuStatus.NOT_RUNNING, ShizukuStatus.NOT_INSTALLED, ShizukuStatus.UNSUPPORTED -> STATUS_SHIZUKU_OFF
+        ShizukuStatus.READY -> STATUS_MEASURING
+    }
+
     /** Método principal. Devuelve [Reading.Failed] si ninguna capa del paquete da datos utilizables. */
     private suspend fun sampleLatency(pkg: String): Reading {
-        // 1) Reutilizar la capa conocida mientras siga presentando fotogramas recientes.
+        // 1) Reutilizar la capa conocida mientras siga existiendo.
         cachedLayer?.let { layer ->
-            val stats = latencyFor(layer)
-            if (stats != null && System.nanoTime() - stats.lastPresentNs <= STALE_NS) return Reading.Value(stats.fps)
+            latencyFor(layer)?.let { return Reading.Value(it) }
         }
         cachedLayer = null
 
         // 2) Buscar capas candidatas del paquete y quedarse con la que presentó más recientemente.
         val list = shizuku.exec(ShellCommands.surfaceFlingerLayers(), CALL_TIMEOUT_MS)
         if (!list.isSuccess) {
-            Log.w(TAG, "--list falló: code=${list.exitCode} out=${list.stdout.take(160)}")
-            failReason = "dumpsys SurfaceFlinger --list falló (código ${list.exitCode})"
+            Diagnostics.w(TAG, "dumpsys SurfaceFlinger --list falló: código ${list.exitCode}: ${list.message}")
+            latencyReason = "dumpsys SurfaceFlinger --list falló (código ${list.exitCode}): ${list.message}"
             return Reading.Failed
         }
         val candidates = parseLayerNames(list.stdout, pkg)
-        Log.d(TAG, "Capas para $pkg: ${candidates.size} candidatas. Primeras líneas de --list: ${list.stdout.lines().take(3)}")
+        Diagnostics.i(TAG, "Salida de SurfaceFlinger --list: ${list.stdout.lines().size} líneas, ${candidates.size} capa(s) de $pkg")
+        Diagnostics.d(TAG, "Capas candidatas de $pkg: ${candidates.joinToString()}")
 
-        var best: Pair<String, LatencyStats>? = null
+        var best: Pair<String, Float>? = null
         for (layer in candidates) {
-            val stats = latencyFor(layer) ?: continue
-            if (best == null || stats.lastPresentNs > best.second.lastPresentNs) best = layer to stats
+            val fps = latencyFor(layer) ?: continue
+            if (best == null || fps > best.second) best = layer to fps
         }
-        val (layer, stats) = best ?: run {
-            failReason = if (candidates.isEmpty()) "no hay capa del juego en SurfaceFlinger"
-            else "la capa del juego no devolvió marcas de presentación"
+        val (layer, fps) = best ?: run {
+            latencyReason = if (candidates.isEmpty()) {
+                Diagnostics.w(TAG, "Ninguna capa de $pkg en SurfaceFlinger --list (${list.stdout.lines().count { it.isNotBlank() }} líneas no vacías)")
+                "no hay capa del juego en SurfaceFlinger ($pkg)"
+            } else {
+                "la capa del juego no devolvió marcas de presentación: $lastLatencyError"
+            }
             return Reading.Failed
         }
         cachedLayer = layer
-        Log.d(TAG, "Capa elegida: $layer, fps=${stats.fps}")
-        return Reading.Value(stats.fps)
+        Diagnostics.d(TAG, "Capa elegida: $layer, fps=$fps")
+        return Reading.Value(fps)
     }
 
-    private suspend fun latencyFor(layer: String): LatencyStats? {
+    /** FPS de una capa a partir de `--latency`, o null si la lectura no es utilizable. */
+    private suspend fun latencyFor(layer: String): Float? {
         val r = shizuku.exec(ShellCommands.surfaceFlingerLatency(layer), CALL_TIMEOUT_MS)
         val nowNs = System.nanoTime()
         if (!r.isSuccess) {
-            Log.d(TAG, "--latency '$layer' falló: code=${r.exitCode} out=${r.stdout.take(120)}")
+            lastLatencyError = "código ${r.exitCode}: ${r.message}"
+            Diagnostics.w(TAG, "dumpsys SurfaceFlinger --latency falló en la capa del juego: $lastLatencyError")
             return null
         }
         val presents = parseLatencyPresents(r.stdout)
-        val stats = computeLatencyStats(presents, nowNs)
-        Log.d(TAG, "--latency '$layer': ${presents.size} presentaciones válidas, stats=$stats")
-        return stats?.takeIf { it.fps <= maxRefreshHz().coerceAtLeast(30f) * TOLERANCE }
+        val newest = presents.maxOrNull()
+        if (newest == null) {
+            lastLatencyError = "sin marcas de presentación válidas (${r.stdout.lines().size} líneas)"
+            Diagnostics.d(TAG, "--latency '$layer': $lastLatencyError")
+            return null
+        }
+        val track = presentTracks[layer]
+        if (track == null || track.newest != newest) presentTracks[layer] = PresentTrack(newest, nowNs)
+        val changedAtNs = presentTracks.getValue(layer).changedAtNs
+
+        val fps = computeLatencyFps(presents)
+        if (fps == null) {
+            lastLatencyError = "marcas insuficientes para calcular FPS (${presents.size})"
+            Diagnostics.d(TAG, "--latency '$layer': $lastLatencyError")
+            return null
+        }
+        Diagnostics.d(TAG, "--latency '$layer': ${presents.size} presentaciones, fps=$fps, stale=${isStale(changedAtNs, nowNs)}")
+        val value = if (isStale(changedAtNs, nowNs)) 0f else fps
+        if (value > maxRefreshHz().coerceAtLeast(30f) * TOLERANCE) {
+            lastLatencyError = "FPS imposible ($value)"
+            Diagnostics.w(TAG, "Error al obtener FPS: $lastLatencyError")
+            return null
+        }
+        return value
     }
 
     /** Método alternativo: contador compuesto global (delta entre muestras). */
     private suspend fun sampleComposite(): Reading {
+        if (compositeDenied) return Reading.Failed
         val startNs = System.nanoTime()
         val result = shizuku.exec(ShellCommands.surfaceFlingerFrames(), CALL_TIMEOUT_MS)
         val endNs = System.nanoTime()
 
         val count = if (result.isSuccess) parseFrameCount(result.stdout) else null
         if (count == null) {
-            Log.w(TAG, "service call 1013 sin datos válidos: code=${result.exitCode} out=${result.stdout.take(160)}")
-            failReason = "service call 1013 sin respuesta válida (código ${result.exitCode})"
+            Diagnostics.w(TAG, "service call 1013 sin datos válidos: código ${result.exitCode}, salida «${result.stdout.take(160)}»")
+            compositeReason = "service call 1013 sin respuesta válida (código ${result.exitCode}): ${result.message}"
+            if (DENIED_MARKERS.any { (result.stdout + result.stderr).contains(it) }) {
+                compositeDenied = true
+                compositeReason = "SurfaceFlinger no permite el contador a Shizuku (${result.message}); no se reintenta"
+                Diagnostics.w(TAG, compositeReason)
+            }
             lastCount = null // la siguiente muestra válida empieza de cero
             return Reading.Failed
         }
@@ -205,7 +305,13 @@ class FpsMonitor(
     companion object {
         private const val TAG = "FpsMonitor"
         const val NO_MEASUREMENT = "Sin medición"
+        const val STATUS_MEASURING = "Midiendo…"
+        const val STATUS_NO_PERMISSION = "Sin permisos de Shizuku"
+        const val STATUS_SHIZUKU_OFF = "Shizuku no está activo"
         private const val MAX_FAILURES = 5
+        /** Con la medición caída, se reintenta como mucho una vez cada 5 s (el juego puede empezar a dibujar más tarde). */
+        private const val RETRY_NS = 5_000_000_000L
+        private val DENIED_MARKERS = listOf("Operation not permitted", "Permission denied")
         private const val CALL_TIMEOUT_MS = 2_000L
         private const val MAX_CALL_LATENCY_NS = 400_000_000L
         private const val MIN_INTERVAL_S = 0.25
@@ -214,22 +320,30 @@ class FpsMonitor(
         private const val SMOOTHING = 0.5f
         private const val MAX_CANDIDATES = 6
         private const val LOG_EVERY = 10
-        /** Sin presentaciones en este intervalo, el juego no está presentando (0 FPS reales). */
+        /** Sin cambios en la marca más reciente durante este intervalo, el juego no está presentando (0 FPS). */
         internal const val STALE_NS = 1_500_000_000L
-        /** Ventana de cálculo de FPS. */
+        /** Ventana de cálculo de FPS, anclada a la marca más reciente. */
         internal const val WINDOW_NS = 2_000_000_000L
 
         private val PARCEL_INT = Regex("""Parcel\(\s*([0-9a-fA-F]{8})\b""")
         private val LATENCY_ROW = Regex("""^(\d+)\s+(\d+)\s+(\d+)$""")
 
-        /** Resultado de una capa: FPS calculados y última presentación (reloj monótono, ns). */
-        internal data class LatencyStats(val fps: Float, val lastPresentNs: Long)
+        /**
+         * Texto corto para mostrar en lugar de un FPS cuando no hay valor. Nunca «N/D»: siempre explica
+         * si se está midiendo, si faltan permisos, si Shizuku está apagado o si el dispositivo no es compatible.
+         */
+        fun placeholder(status: String): String = when {
+            status.startsWith(STATUS_NO_PERMISSION) -> "Sin permisos"
+            status.startsWith(STATUS_SHIZUKU_OFF) -> "Shizuku inactivo"
+            status.startsWith("No compatible") -> "No compatible"
+            else -> STATUS_MEASURING
+        }
 
         /**
          * Extrae el contador de `Result: Parcel(0002a3f1    '....')`.
          * SurfaceFlinger responde un único int32, impreso como 8 dígitos hexadecimales.
          * Cualquier otro formato (p. ej. `Parcel(Error: 0xffffffff ...)`) devuelve null:
-         * es preferible mostrar «N/D» a un FPS inventado.
+         * es preferible mostrar un estado a un FPS inventado.
          */
         internal fun parseFrameCount(output: String): Long? {
             if (output.contains("Error", ignoreCase = true)) return null
@@ -254,7 +368,7 @@ class FpsMonitor(
         /**
          * Instantes de presentación de `dumpsys SurfaceFlinger --latency <capa>`.
          * La primera línea es el periodo de refresco (una sola cifra) y se ignora. Cada fila tiene
-         * tres columnas: instante deseado, inicio de render y presentación real (la última).
+         * tres columnas separadas por espacios o tabuladores; se usa la última (instante de presentación).
          * Los valores 0 y INT64_MAX son filas pendientes y se descartan.
          */
         internal fun parseLatencyPresents(output: String): List<Long> =
@@ -264,21 +378,21 @@ class FpsMonitor(
                 .toList()
 
         /**
-         * FPS a partir de las presentaciones de una capa. Usa los fotogramas de la última ventana
-         * (o los dos últimos si la ventana tiene pocos). Devuelve null si no hay datos suficientes
-         * o si las marcas están en el futuro (reloj incompatible). Sin presentaciones recientes, 0.
+         * FPS a partir de las presentaciones de una capa, usando solo diferencias entre marcas (no depende
+         * del reloj del sistema). Usa las presentaciones dentro de [WINDOW_NS] antes de la más reciente
+         * (o las dos últimas si hay pocas). Devuelve null si no hay al menos dos marcas válidas.
          */
-        internal fun computeLatencyStats(presents: List<Long>, nowNs: Long): LatencyStats? {
+        internal fun computeLatencyFps(presents: List<Long>): Float? {
             val valid = presents.filter { it > 0L && it != Long.MAX_VALUE }.sorted()
             if (valid.size < 2) return null
             val last = valid.last()
-            if (last - nowNs > 100_000_000L) return null // marcas en el futuro: reloj no comparable
-            if (nowNs - last > STALE_NS) return LatencyStats(0f, last)
-
-            val recent = valid.filter { it >= nowNs - WINDOW_NS }.takeIf { it.size >= 2 } ?: valid.takeLast(2)
+            val recent = valid.filter { it >= last - WINDOW_NS }.takeIf { it.size >= 2 } ?: valid.takeLast(2)
             val spanS = (recent.last() - recent.first()) / 1_000_000_000.0
             if (spanS <= 0.0) return null
-            return LatencyStats(((recent.size - 1) / spanS).toFloat(), last)
+            return ((recent.size - 1) / spanS).toFloat()
         }
+
+        /** true si la marca más reciente no ha cambiado en [STALE_NS] según el reloj local. */
+        internal fun isStale(changedAtNs: Long, nowNs: Long): Boolean = nowNs - changedAtNs > STALE_NS
     }
 }

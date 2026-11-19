@@ -38,7 +38,18 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_AUDIO, true)
         set(v) { prefs.edit().putBoolean(KEY_AUDIO, v).apply() }
 
+    /** Último televisor usado: se reconecta solo cuando vuelve a aparecer en la red. */
+    var lastHost: String?
+        get() = prefs.getString(KEY_LAST_HOST, null)
+        set(v) { prefs.edit().putString(KEY_LAST_HOST, v).apply() }
+
+    var lastProtocol: String?
+        get() = prefs.getString(KEY_LAST_PROTOCOL, null)
+        set(v) { prefs.edit().putString(KEY_LAST_PROTOCOL, v).apply() }
+
     companion object {
+        private const val KEY_LAST_HOST = "last_host"
+        private const val KEY_LAST_PROTOCOL = "last_protocol"
         val FPS_OPTIONS = listOf(24, 30, 60)
         private const val KEY_RES = "resolution"
         private const val KEY_FPS = "fps"

@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var discovery: DeviceDiscovery
     private lateinit var adapter: DeviceAdapter
     private var lastDevices: List<TvDevice> = emptyList()
+    private var autoConnectDone = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         discovery = DeviceDiscovery(this) { list ->
             lastDevices = list
             adapter.submit(list)
+            tryAutoConnect()
             b.tvNoDevices.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
         }
 
@@ -85,7 +87,11 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                SessionState.stats.collect { renderStats(it) }
+                SessionState.stats.collect {
+                    renderStats(it)
+                    if (!it.running) autoConnectDone = false
+                    tryAutoConnect()
+                }
             }
         }
         lifecycleScope.launch {
@@ -206,7 +212,28 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.need_stream_first))
             return
         }
+        settings.lastHost = device.host
+        settings.lastProtocol = protocol.name
+        autoConnectDone = true
         TvConnection.connect(this, device, protocol, ts, hls, settings.autoReconnect)
+    }
+
+    /**
+     * Como Mirror Meister: si hay transmisión activa y el último televisor vuelve a aparecer en la red,
+     * se conecta sin pulsar nada. Solo una vez por transmisión, y nunca si ya hay un televisor conectado.
+     */
+    private fun tryAutoConnect() {
+        if (autoConnectDone) return
+        val s = SessionState.stats.value
+        if (!s.running || s.tsUrl == null || s.hlsUrl == null) return
+        if (TvConnection.state.value !is TvConnection.State.Idle) return
+        val host = settings.lastHost ?: return
+        val device = lastDevices.firstOrNull { it.host == host } ?: return
+        val protocol = settings.lastProtocol?.let { name ->
+            Protocol.values().firstOrNull { it.name == name }
+        }?.takeIf { it in device.protocols } ?: device.preferredProtocol
+        autoConnectDone = true
+        TvConnection.connect(this, device, protocol, s.tsUrl, s.hlsUrl, settings.autoReconnect)
     }
 
     // ------------------------------------------------------------ render

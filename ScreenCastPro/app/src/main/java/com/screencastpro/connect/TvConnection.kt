@@ -36,6 +36,7 @@ object TvConnection {
 
     private var appContext: Context? = null
     private var device: TvDevice? = null
+    private var protocol: Protocol = Protocol.CAST
     private var tsUrl: String? = null
     private var hlsUrl: String? = null
     private var autoReconnect = true
@@ -49,7 +50,7 @@ object TvConnection {
         override fun run() {
             val dev = device ?: return
             val av = dev.avTransportUrl
-            if (dev.preferredProtocol != Protocol.DLNA || av == null || state.value !is State.Connected) return
+            if (protocol != Protocol.DLNA || av == null || state.value !is State.Connected) return
             val gen = generation
             io.execute {
                 val reload: Boolean = try {
@@ -74,11 +75,21 @@ object TvConnection {
      * @param tsUrl  URL MPEG-TS (reproductores DLNA y HTTP).
      * @param hlsUrl URL HLS (Chromecast / Google Cast).
      */
-    fun connect(context: Context, device: TvDevice, tsUrl: String, hlsUrl: String, autoReconnect: Boolean) {
+    /** [protocol] es el modo elegido por el usuario (Cast o DLNA), debe estar anunciado por el dispositivo. */
+    fun connect(
+        context: Context,
+        device: TvDevice,
+        protocol: Protocol,
+        tsUrl: String,
+        hlsUrl: String,
+        autoReconnect: Boolean,
+    ) {
+        require(protocol in device.protocols) { "El dispositivo no anuncia ${protocol.label}" }
         appContext = context.applicationContext
         if (this.device != null) disconnect()
         generation++
         this.device = device
+        this.protocol = protocol
         this.tsUrl = tsUrl
         this.hlsUrl = hlsUrl
         this.autoReconnect = autoReconnect
@@ -92,8 +103,8 @@ object TvConnection {
         main.removeCallbacks(dlnaMonitor)
         val dev = device
         device = null
-        if (dev?.preferredProtocol == Protocol.DLNA) {
-            dev.avTransportUrl?.let { av ->
+        if (protocol == Protocol.DLNA) {
+            dev?.avTransportUrl?.let { av ->
                 io.execute { try { DlnaConnector.stop(av) } catch (_: Exception) {} }
             }
         }
@@ -110,7 +121,7 @@ object TvConnection {
     private fun startConnect(dev: TvDevice) {
         val ctx = appContext ?: return
         val gen = generation
-        when (dev.preferredProtocol) {
+        when (protocol) {
             Protocol.CAST -> {
                 val url = hlsUrl ?: return fail(dev, "Falta la URL de transmisión")
                 val connector = cast ?: CastConnector(ctx).also { cast = it }

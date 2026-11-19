@@ -28,6 +28,7 @@ import com.screencastpro.core.BitrateChoice
 import com.screencastpro.core.Resolution
 import com.screencastpro.databinding.ActivityMainBinding
 import com.screencastpro.discovery.DeviceDiscovery
+import com.screencastpro.discovery.Protocol
 import com.screencastpro.discovery.TvDevice
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -62,8 +63,8 @@ class MainActivity : AppCompatActivity() {
         settings = AppSettings(this)
 
         setupSettingsControls()
-        adapter = DeviceAdapter { device, connected ->
-            if (connected) TvConnection.disconnect() else onConnectClicked(device)
+        adapter = DeviceAdapter { device, protocol, connected ->
+            if (connected) TvConnection.disconnect() else onConnectClicked(device, protocol)
         }
         b.rvDevices.layoutManager = LinearLayoutManager(this)
         b.rvDevices.adapter = adapter
@@ -197,7 +198,7 @@ class MainActivity : AppCompatActivity() {
         startService(Intent(this, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
     }
 
-    private fun onConnectClicked(device: TvDevice) {
+    private fun onConnectClicked(device: TvDevice, protocol: Protocol) {
         val s = SessionState.stats.value
         val ts = s.tsUrl
         val hls = s.hlsUrl
@@ -205,7 +206,7 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.need_stream_first))
             return
         }
-        TvConnection.connect(this, device, ts, hls, settings.autoReconnect)
+        TvConnection.connect(this, device, protocol, ts, hls, settings.autoReconnect)
     }
 
     // ------------------------------------------------------------ render

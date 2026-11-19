@@ -35,4 +35,12 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/connect" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/altButton"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:visibility="gone" />
 </LinearLayout>

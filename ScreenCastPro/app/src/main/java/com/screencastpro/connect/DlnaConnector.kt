@@ -28,9 +28,14 @@ object DlnaConnector {
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)
                 val (playAction, playBody) = Upnp.play()
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(playAction), playBody)
-                Thread.sleep(2500)
-                val state = transportState(avTransportUrl)
-                if (state == "PLAYING" || state == "TRANSITIONING") return
+                // La TV tarda en abrir el flujo (a veces varios segundos): se consulta hasta 8 s.
+                var state: String? = null
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000)
+                    state = transportState(avTransportUrl)
+                    if (state == "PLAYING" || state == "TRANSITIONING") return
+                }
                 lastError = java.io.IOException("El televisor no reproduce ($profile, estado $state)")
             } catch (e: java.io.IOException) {
                 lastError = e

@@ -206,7 +206,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onConnectClicked(device: TvDevice, protocol: Protocol) {
         val s = SessionState.stats.value
-        val dlna = s.mp4Url
+        val dlna = s.tsUrl
         val hls = s.hlsUrl
         if (!s.running || dlna == null || hls == null) {
             toast(getString(R.string.need_stream_first))
@@ -225,7 +225,7 @@ class MainActivity : AppCompatActivity() {
     private fun tryAutoConnect() {
         if (autoConnectDone) return
         val s = SessionState.stats.value
-        if (!s.running || s.mp4Url == null || s.hlsUrl == null) return
+        if (!s.running || s.tsUrl == null || s.hlsUrl == null) return
         if (TvConnection.state.value !is TvConnection.State.Idle) return
         val host = settings.lastHost ?: return
         val device = lastDevices.firstOrNull { it.host == host } ?: return
@@ -233,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             Protocol.values().firstOrNull { it.name == name }
         }?.takeIf { it in device.protocols } ?: device.preferredProtocol
         autoConnectDone = true
-        TvConnection.connect(this, device, protocol, s.mp4Url, s.hlsUrl, settings.autoReconnect)
+        TvConnection.connect(this, device, protocol, s.tsUrl, s.hlsUrl, settings.autoReconnect)
     }
 
     // ------------------------------------------------------------ render

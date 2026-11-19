@@ -72,7 +72,7 @@ object TvConnection {
     }
 
     /**
-     * @param dlnaUrl URL MP4 fragmentado (televisores DLNA).
+     * @param dlnaUrl URL MPEG-TS (televisores DLNA; el perfil probado es video/mp2ts).
      * @param hlsUrl URL HLS (Chromecast / Google Cast).
      */
     /** [protocol] es el modo elegido por el usuario (Cast o DLNA), debe estar anunciado por el dispositivo. */

@@ -19,7 +19,7 @@ object DlnaConnector {
         avTransportUrl: String,
         streamUrl: String,
         title: String,
-        profiles: List<String> = Upnp.MP4_PROTOCOL_INFO,
+        profiles: List<String> = Upnp.DLNA_PROFILES,
     ) {
         var lastError: Exception? = null
         for (profile in profiles) {

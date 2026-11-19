@@ -3,6 +3,7 @@ package com.screencastpro.connect
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.screencastpro.DiagLog
 import com.screencastpro.discovery.Protocol
 import com.screencastpro.discovery.TvDevice
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +95,7 @@ object TvConnection {
         this.hlsUrl = hlsUrl
         this.autoReconnect = autoReconnect
         attempts = 0
-        state.value = State.Connecting(device)
+        setState(State.Connecting(device))
         startConnect(device)
     }
 
@@ -109,7 +110,7 @@ object TvConnection {
             }
         }
         cast?.disconnect()
-        state.value = State.Idle
+        setState(State.Idle)
     }
 
     /** Llamado al detener la transmisión: desconecta cualquier televisor activo. */
@@ -129,7 +130,7 @@ object TvConnection {
                     override fun onLoaded() {
                         if (gen != generation) return
                         attempts = 0
-                        state.value = State.Connected(dev, url)
+                        setState(State.Connected(dev, url))
                     }
 
                     override fun onFailed(message: String) {
@@ -139,7 +140,7 @@ object TvConnection {
                     override fun onLost(recoverable: Boolean) {
                         if (gen != generation) return
                         if (recoverable) scheduleRetry("Se perdió la conexión con ${dev.name}")
-                        else state.value = State.Error(dev, "La sesión Cast ha terminado")
+                        else setState(State.Error(dev, "La sesión Cast ha terminado"))
                     }
                 })
             }
@@ -152,7 +153,7 @@ object TvConnection {
                         main.post {
                             if (gen != generation) return@post
                             attempts = 0
-                            state.value = State.Connected(dev, url)
+                            setState(State.Connected(dev, url))
                             main.removeCallbacks(dlnaMonitor)
                             main.postDelayed(dlnaMonitor, DLNA_CHECK_MS)
                         }
@@ -168,18 +169,29 @@ object TvConnection {
     private fun scheduleRetry(reason: String) {
         val dev = device ?: return
         if (!autoReconnect || attempts >= MAX_ATTEMPTS) {
-            state.value = State.Error(dev, reason)
+            setState(State.Error(dev, reason))
             return
         }
         attempts++
         val gen = generation
-        state.value = State.Connecting(dev)
+        setState(State.Connecting(dev))
         main.postDelayed({
             if (gen == generation && device != null) startConnect(dev)
         }, RETRY_DELAY_MS)
     }
 
+    private fun setState(s: State) {
+        val text = when (s) {
+            is State.Idle -> "sin conexión"
+            is State.Connecting -> "conectando con ${s.device.name} (${s.device.host}, ${s.device.preferredProtocol.label})"
+            is State.Connected -> "conectado a ${s.device.name} (${s.device.host})"
+            is State.Error -> "error: ${s.message}"
+        }
+        DiagLog.i("TV", text)
+        state.value = s
+    }
+
     private fun fail(dev: TvDevice, message: String) {
-        state.value = State.Error(dev, message)
+        setState(State.Error(dev, message))
     }
 }

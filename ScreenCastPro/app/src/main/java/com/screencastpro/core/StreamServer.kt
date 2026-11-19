@@ -27,6 +27,7 @@ class StreamServer(
     private val token: String,
     private val mp4Hub: StreamHub? = null,
     private val maxClients: Int = 4,
+    private val log: (String) -> Unit = {},
 ) {
     private val running = java.util.concurrent.atomic.AtomicBoolean(false)
     private var server: ServerSocket? = null
@@ -75,6 +76,7 @@ class StreamServer(
                     handle(sock)
                 } catch (_: Exception) {
                     // Un cliente con datos raros no debe tumbar el proceso.
+                    log("error de cliente ignorado")
                 } finally {
                     active.decrementAndGet()
                 }
@@ -96,6 +98,7 @@ class StreamServer(
             if (parts.size < 2) return respondSimple(s, 400, "Bad Request")
             val method = parts[0]
             val path = parts[1].substringBefore('?')
+            log("HTTP $method ${path.replace(token, "***")}")
             if (method != "GET" && method != "HEAD") return respondSimple(s, 405, "Method Not Allowed")
 
             hub.touch()
@@ -129,6 +132,7 @@ class StreamServer(
             return respondSimple(s, 503, "Too many viewers")
         }
         val sub = h.subscribe()
+        log("espectador conectado ($contentType)")
         try {
             val header = "HTTP/1.1 200 OK\r\n" +
                 "Content-Type: $contentType\r\n" +
@@ -158,6 +162,7 @@ class StreamServer(
             // Error inesperado de un cliente: se cierra solo esa conexión.
         } finally {
             h.unsubscribe(sub)
+            log("espectador desconectado ($contentType)")
         }
     }
 

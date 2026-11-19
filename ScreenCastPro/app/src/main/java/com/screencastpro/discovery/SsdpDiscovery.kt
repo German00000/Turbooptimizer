@@ -1,5 +1,6 @@
 package com.screencastpro.discovery
 
+import com.screencastpro.DiagLog
 import com.screencastpro.core.Upnp
 import com.screencastpro.net.Http
 import java.io.IOException
@@ -56,7 +57,8 @@ object SsdpDiscovery {
             )
         } catch (_: IOException) {
             null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            DiagLog.w("SSDP", "descripción no válida (${e.javaClass.simpleName}) en $location")
             null // XML malformado u otro dispositivo no compatible
         }
     }

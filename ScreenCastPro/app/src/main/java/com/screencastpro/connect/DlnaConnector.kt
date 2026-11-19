@@ -1,19 +1,20 @@
 package com.screencastpro.connect
 
+import com.screencastpro.DiagLog
 import com.screencastpro.core.Upnp
 import com.screencastpro.net.Http
 
 /**
  * Control DLNA/UPnP (servicio AVTransport). Se ejecuta siempre fuera del hilo principal.
- * El televisor abre la URL HTTP del teléfono con su propio reproductor de MPEG-TS.
+ * El televisor abre la URL del teléfono con su propio reproductor.
  */
 object DlnaConnector {
+    private const val TAG = "DLNA"
 
     /**
-     * Envía la URL al televisor y comprueba que de verdad reproduce. Muchos televisores aceptan
-     * SetAVTransportURI y después no reproducen (p. ej. "formato no compatible"), así que tras Play se
-     * pregunta el estado y, si no está reproduciendo, se prueba el siguiente perfil de
-     * [Upnp.TS_PROTOCOL_INFO]. Si ninguno funciona, se lanza una excepción.
+     * Envía la URL al televisor y comprueba que de verdad reproduce. Tras Play se consulta el estado
+     * hasta 8 s; si no reproduce, se prueba el siguiente perfil. Si ninguno funciona, lanza excepción
+     * con el último motivo.
      */
     fun load(
         avTransportUrl: String,
@@ -23,21 +24,26 @@ object DlnaConnector {
     ) {
         var lastError: Exception? = null
         for (profile in profiles) {
+            DiagLog.i(TAG, "probando perfil $profile")
             try {
                 val (setAction, setBody) = Upnp.setAvTransportUri(streamUrl, title, profile)
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)
                 val (playAction, playBody) = Upnp.play()
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(playAction), playBody)
-                // La TV tarda en abrir el flujo (a veces varios segundos): se consulta hasta 8 s.
                 var state: String? = null
                 val deadline = System.currentTimeMillis() + 8_000
                 while (System.currentTimeMillis() < deadline) {
                     Thread.sleep(1000)
                     state = transportState(avTransportUrl)
-                    if (state == "PLAYING" || state == "TRANSITIONING") return
+                    DiagLog.i(TAG, "estado de reproducción: $state")
+                    if (state == "PLAYING" || state == "TRANSITIONING") {
+                        DiagLog.i(TAG, "reproduciendo con $profile")
+                        return
+                    }
                 }
                 lastError = java.io.IOException("El televisor no reproduce ($profile, estado $state)")
             } catch (e: Exception) {
+                DiagLog.w(TAG, "perfil $profile falló", e)
                 lastError = e
             }
         }

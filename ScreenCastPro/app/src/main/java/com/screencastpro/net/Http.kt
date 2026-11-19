@@ -1,5 +1,6 @@
 package com.screencastpro.net
 
+import com.screencastpro.DiagLog
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,8 +23,13 @@ object Http {
         }
     }
 
-    /** Acción SOAP (UPnP AVTransport). Devuelve el cuerpo de la respuesta o lanza IOException. */
+    /**
+     * Acción SOAP (UPnP AVTransport). Devuelve el cuerpo de la respuesta o lanza IOException.
+     * Registra la acción, el código HTTP y el inicio de la respuesta. No registra la petición,
+     * porque incluye la URL de transmisión.
+     */
     fun soap(url: String, soapAction: String, body: String): String {
+        val action = soapAction.substringAfter('#').trim('"')
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = TIMEOUT_MS
@@ -37,10 +43,16 @@ object Http {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            DiagLog.i("SOAP", "$action -> HTTP $code ${snippet(text)}")
             if (code !in 200..299) throw IOException("SOAP HTTP $code: ${text.take(200)}")
             return text
+        } catch (e: IOException) {
+            DiagLog.e("SOAP", "$action falló (${url.substringAfter("//").substringBefore("/")})", e)
+            throw e
         } finally {
             conn.disconnect()
         }
     }
+
+    private fun snippet(text: String): String = text.replace(Regex("\\s+"), " ").take(240)
 }

@@ -15,6 +15,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -84,6 +85,7 @@ class MainActivity : AppCompatActivity() {
         }
         b.btnMiracast.setOnClickListener { openCastSettings() }
         b.btnCopyUrl.setOnClickListener { copyUrls() }
+        b.btnLog.setOnClickListener { showDiagLog() }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -327,6 +329,33 @@ class MainActivity : AppCompatActivity() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("ScreenCast Pro", text))
         toast("URL copiada")
+    }
+
+    /** Registro de diagnóstico: se lee y se copia desde el propio teléfono, sin adb. */
+    private fun showDiagLog() {
+        val logText = DiagLog.read().ifBlank { getString(R.string.log_empty) }
+        val content = android.widget.TextView(this).apply {
+            text = logText
+            setTextIsSelectable(true)
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 11f
+            setPadding(48, 24, 48, 24)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.log_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.log_copy) { _, _ ->
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("ScreenCast Pro", logText))
+                toast(getString(R.string.log_copied))
+            }
+            .setNeutralButton(R.string.log_clear) { _, _ ->
+                DiagLog.clear()
+                toast(getString(R.string.log_cleared))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun toast(text: String) {

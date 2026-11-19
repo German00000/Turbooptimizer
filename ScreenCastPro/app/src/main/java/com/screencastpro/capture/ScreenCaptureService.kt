@@ -22,6 +22,7 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import com.screencastpro.DiagLog
 import com.screencastpro.MainActivity
 import com.screencastpro.R
 import com.screencastpro.SessionState
@@ -181,7 +182,7 @@ class ScreenCaptureService : Service() {
         try {
             startInternal(resultCode, data)
         } catch (e: Exception) {
-            Log.e(TAG, "No se pudo iniciar la transmisión", e)
+            DiagLog.e(TAG, "No se pudo iniciar la transmisión", e)
             fail(e.message ?: "Error al iniciar la transmisión")
         }
     }
@@ -225,7 +226,7 @@ class ScreenCaptureService : Service() {
         val m4 = StreamHub()
         m4.onKeyframeRequested = { encoder?.requestKeyframe() }
         mp4Hub = m4
-        server = StreamServer(h2, PORT, token, m4).also { it.start() }
+        server = StreamServer(h2, PORT, token, m4, log = { DiagLog.i("Servidor", it) }).also { it.start() }
 
         audioActive = wantAudio && Build.VERSION.SDK_INT >= 29 && hasRecordAudio() && startAudio(mp)
         muxer = TsMuxer(audioActive)
@@ -237,7 +238,7 @@ class ScreenCaptureService : Service() {
         ensureForeground(getString(R.string.notification_text))
         main.postDelayed(tick, TICK_MS)
         publishState()
-        Log.i(TAG, "Transmitiendo ${ladder[currentLevel]} en puerto $PORT, audio=$audioActive")
+        DiagLog.i(TAG, "Transmitiendo ${ladder[currentLevel]} en puerto $PORT, audio=$audioActive")
     }
 
     /** Crea o reconfigura el codificador y el VirtualDisplay al nivel indicado. */
@@ -245,6 +246,7 @@ class ScreenCaptureService : Service() {
         val p = paramsFor(level, bitrate)
         val enc = VideoEncoder(p, lowLatency, timelineOffsetUs) { au, pts, key -> onVideo(au, pts, key) }
         enc.start()
+        DiagLog.i(TAG, "codificador ${p.width}x${p.height}@${p.fps}, ${p.bitrateBps / 1000} kbps")
         val vd = virtualDisplay
         if (vd == null) {
             virtualDisplay = projection!!.createVirtualDisplay(
@@ -270,7 +272,7 @@ class ScreenCaptureService : Service() {
         return try {
             if (cap.start()) { audio = cap; true } else false
         } catch (e: Exception) {
-            Log.w(TAG, "Audio interno no disponible, se continúa solo con vídeo", e)
+            DiagLog.w(TAG, "Audio interno no disponible, se continúa solo con vídeo", e)
             false
         }
     }
@@ -342,9 +344,10 @@ class ScreenCaptureService : Service() {
             if (!idle) {
                 virtualDisplay?.setSurface(null)
                 idle = true
-                Log.i(TAG, "Sin espectadores: codificador en pausa")
+                DiagLog.i(TAG, "Sin espectadores: codificador en pausa")
             }
         } else if (idle) {
+            DiagLog.i(TAG, "espectadores de nuevo: codificador reanudado")
             idle = false
             encoder?.let {
                 virtualDisplay?.setSurface(it.inputSurface)
@@ -360,7 +363,7 @@ class ScreenCaptureService : Service() {
                     encoder?.setBitrate(c.bitrate)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "No se pudo adaptar la calidad", e)
+                DiagLog.w(TAG, "No se pudo adaptar la calidad", e)
             }
         }
         publishState()
@@ -381,7 +384,7 @@ class ScreenCaptureService : Service() {
             try {
                 reconfigure(currentLevel, controller?.bitrate ?: 0)
             } catch (e: Exception) {
-                Log.w(TAG, "No se pudo adaptar a la rotación", e)
+                DiagLog.w(TAG, "No se pudo adaptar a la rotación", e)
             }
         }
     }
@@ -440,6 +443,7 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return
         }
+        DiagLog.i(TAG, "transmisión detenida")
         started = false
         main.removeCallbacks(tick)
         try { unregisterComponentCallbacks(componentCallbacks) } catch (_: Exception) {}
@@ -492,7 +496,7 @@ class ScreenCaptureService : Service() {
                 acquire()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "No se pudo activar el modo Wi-Fi de baja latencia", e)
+            DiagLog.w(TAG, "No se pudo activar el modo Wi-Fi de baja latencia", e)
         }
     }
 
@@ -502,7 +506,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun fail(message: String) {
-        Log.w(TAG, message)
+        DiagLog.w(TAG, message)
         stopCapture()
         SessionState.reset(error = message)
     }

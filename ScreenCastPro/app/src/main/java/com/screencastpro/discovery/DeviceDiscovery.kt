@@ -7,6 +7,7 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.screencastpro.DiagLog
 import java.net.Inet4Address
 import java.util.concurrent.ConcurrentHashMap
 
@@ -57,7 +58,7 @@ class DeviceDiscovery(
                         SsdpDiscovery.describe(location)?.let { addDevice(it) }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "SSDP falló", e)
+                    DiagLog.w(TAG, "SSDP falló", e)
                 }
                 var waited = 0L
                 while (running && waited < SSDP_INTERVAL_MS) {
@@ -87,7 +88,7 @@ class DeviceDiscovery(
                 acquire()
             }
         } catch (e: SecurityException) {
-            Log.w(TAG, "Sin MulticastLock: el descubrimiento puede tardar más", e)
+            DiagLog.w(TAG, "Sin MulticastLock: el descubrimiento puede tardar más", e)
         }
     }
 
@@ -104,7 +105,7 @@ class DeviceDiscovery(
             override fun onDiscoveryStopped(serviceType: String) {}
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "NSD no pudo iniciar: $errorCode")
+                DiagLog.w(TAG, "NSD no pudo iniciar: $errorCode")
             }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
@@ -115,7 +116,7 @@ class DeviceDiscovery(
         try {
             nsd.discoverServices(CAST_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         } catch (e: Exception) {
-            Log.w(TAG, "No se pudo iniciar NSD", e)
+            DiagLog.w(TAG, "No se pudo iniciar NSD", e)
         }
     }
 
@@ -145,7 +146,7 @@ class DeviceDiscovery(
             @Suppress("DEPRECATION") // resolveService sigue disponible; registerServiceInfoCallback es API 34+.
             nsd.resolveService(next, object : NsdManager.ResolveListener {
                 override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    Log.w(TAG, "No se resolvió ${serviceInfo.serviceName}: $errorCode")
+                    DiagLog.w(TAG, "No se resolvió ${serviceInfo.serviceName}: $errorCode")
                     resolveDone()
                 }
 
@@ -160,7 +161,7 @@ class DeviceDiscovery(
                 }
             })
         } catch (e: Exception) {
-            Log.w(TAG, "resolveService falló", e)
+            DiagLog.w(TAG, "resolveService falló", e)
             resolveDone()
         }
     }
@@ -175,6 +176,9 @@ class DeviceDiscovery(
     private fun addDevice(device: TvDevice) {
         if (device.host.isEmpty()) return
         val previous = found[device.host]
+        if (previous == null) {
+            DiagLog.i("Descubrimiento", "encontrado: ${device.name} (${device.host}) ${device.protocolsLabel}")
+        }
         found[device.host] = previous?.merged(device) ?: device
         main.post { onChanged(found.values.sortedBy { it.name.lowercase() }) }
     }

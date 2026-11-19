@@ -41,4 +41,11 @@
     <string name="notification_channel">Transmisión de pantalla</string>
     <string name="notification_text">Transmitiendo la pantalla a la red local</string>
     <string name="notification_stop">Detener</string>
+    <string name="log_button">Ver registro de diagnóstico</string>
+    <string name="log_title">Registro de diagnóstico</string>
+    <string name="log_copy">Copiar</string>
+    <string name="log_clear">Borrar</string>
+    <string name="log_copied">Registro copiado</string>
+    <string name="log_cleared">Registro borrado</string>
+    <string name="log_empty">Todavía no hay registros. Transmite y conecta un televisor para generarlos.</string>
 </resources>

@@ -106,6 +106,14 @@ class Fmp4Muxer(
         }
     }
 
+    /** Perfil y nivel H.264 del SPS, por ejemplo "perfil 66, nivel 5.1". Null si aún no hay SPS. */
+    fun spsSummary(): String? {
+        val s = sps ?: return null
+        if (s.size < 4) return null
+        val level = s[3].toInt() and 0xFF
+        return "perfil ${s[1].toInt() and 0xFF}, nivel ${level / 10}.${level % 10}"
+    }
+
     /** Segmento de inicio. Requiere [hasParams]. */
     fun initSegment(): ByteArray {
         val s = requireNotNull(sps) { "Falta SPS" }

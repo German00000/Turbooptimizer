@@ -86,6 +86,7 @@ class ScreenCaptureService : Service() {
     /** Hub MP4 fragmentado (DLNA). Cada cambio de calidad reinicia su segmento de inicio. */
     @Volatile private var mp4Hub: StreamHub? = null
     @Volatile private var fmp4: com.screencastpro.core.Fmp4Muxer? = null
+    @Volatile private var spsLogged = false
     private var server: StreamServer? = null
     private var controller: AdaptiveController? = null
     private var token = ""
@@ -261,6 +262,7 @@ class ScreenCaptureService : Service() {
         // Cada encoder tiene su propio segmento de inicio (resolución distinta): se reinicia el flujo MP4.
         mp4Hub?.resetStream()
         fmp4 = com.screencastpro.core.Fmp4Muxer(p.width, p.height, p.fps, withAudio = audioActive)
+        spsLogged = false
         val old = encoder
         encoder = enc
         currentLevel = level
@@ -295,6 +297,10 @@ class ScreenCaptureService : Service() {
         val m4 = mp4Hub
         if (f != null && m4 != null) {
             if (!f.hasParams) f.extractParams(au)
+            if (f.hasParams && !spsLogged) {
+                spsLogged = true
+                DiagLog.i(TAG, "H.264 ${f.spsSummary()} (los televisores DLNA suelen decodificar hasta el nivel 4.1)")
+            }
             if (f.hasParams && m4.initSegment == null) m4.setInitSegment(f.initSegment())
             if (m4.initSegment != null) m4.publish(f.fragment(au, ptsUs, key), ptsUs, key)
         }

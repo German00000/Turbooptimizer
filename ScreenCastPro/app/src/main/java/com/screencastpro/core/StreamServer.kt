@@ -90,10 +90,17 @@ class StreamServer(
             s.tcpNoDelay = true
             val input = BufferedInputStream(s.getInputStream())
             val requestLine = readLine(input) ?: return
+            val headers = mutableListOf<String>()
             while (true) {
                 val line = readLine(input) ?: break
                 if (line.isEmpty()) break
+                headers.add(line)
             }
+            val interesting = headers.filter { h ->
+                h.startsWith("User-Agent", true) || h.startsWith("Range", true) ||
+                    h.startsWith("Accept", true) || h.contains("dlna", true)
+            }
+            if (interesting.isNotEmpty()) log("cabeceras: " + interesting.joinToString(" | ").take(400))
             val parts = requestLine.split(' ')
             if (parts.size < 2) return respondSimple(s, 400, "Bad Request")
             val method = parts[0]

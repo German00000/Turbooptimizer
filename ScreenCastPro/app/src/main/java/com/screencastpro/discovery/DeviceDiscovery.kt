@@ -48,6 +48,8 @@ class DeviceDiscovery(
         acquireMulticast()
         startNsd()
         ssdpThread = Thread({
+            // Sin interrupt(): parar = cambiar running. Una InterruptedException no capturada
+            // mataría el proceso y, con él, la transmisión.
             while (running) {
                 try {
                     for (location in SsdpDiscovery.search()) {
@@ -59,7 +61,12 @@ class DeviceDiscovery(
                 }
                 var waited = 0L
                 while (running && waited < SSDP_INTERVAL_MS) {
-                    Thread.sleep(500)
+                    try {
+                        Thread.sleep(500)
+                    } catch (_: InterruptedException) {
+                        running = false
+                        break
+                    }
                     waited += 500
                 }
             }
@@ -70,7 +77,6 @@ class DeviceDiscovery(
         running = false
         stopNsd()
         releaseMulticast()
-        ssdpThread?.interrupt()
         ssdpThread = null
     }
 

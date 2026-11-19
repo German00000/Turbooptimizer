@@ -70,7 +70,13 @@ class StreamServer(
             }
             active.incrementAndGet()
             p.execute {
-                try { handle(sock) } finally { active.decrementAndGet() }
+                try {
+                    handle(sock)
+                } catch (_: Exception) {
+                    // Un cliente con datos raros no debe tumbar el proceso.
+                } finally {
+                    active.decrementAndGet()
+                }
             }
         }
     }
@@ -124,7 +130,12 @@ class StreamServer(
             out.write(header.toByteArray(Charsets.US_ASCII))
             out.flush()
             while (running.get() && !s.isClosed) {
-                val pkt = sub.poll(1000) ?: continue
+                val pkt: StreamHub.Packet? = try {
+                    sub.poll(1000)
+                } catch (_: InterruptedException) {
+                    break // parada del servidor
+                }
+                if (pkt == null) continue
                 val waitedMs = (System.nanoTime() - pkt.enqueuedNs) / 1_000_000.0
                 hub.recordQueueWait(waitedMs)
                 val t0 = System.nanoTime()
@@ -135,6 +146,8 @@ class StreamServer(
             }
         } catch (_: IOException) {
             // Cliente desconectado: normal en streaming.
+        } catch (_: RuntimeException) {
+            // Error inesperado de un cliente: se cierra solo esa conexión.
         } finally {
             hub.unsubscribe(sub)
         }

@@ -100,6 +100,7 @@ class ScreenCaptureService : Service() {
     private var srcH = 0
     private var dpi = 0
     private var audioActive = false
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
     private var started = false
     private var idle = false
     private var lastThermal = ThermalLevel.NORMAL
@@ -226,6 +227,7 @@ class ScreenCaptureService : Service() {
         startVideo(topLevel, timelineOffsetUs = 0L, bitrate = controller!!.bitrate)
         lastTickNs = System.nanoTime()
 
+        acquireWifiLock()
         ensureForeground(getString(R.string.notification_text))
         main.postDelayed(tick, TICK_MS)
         publishState()
@@ -433,6 +435,7 @@ class ScreenCaptureService : Service() {
         idle = false
         audioActive = false
         TvConnection.disconnectAll(applicationContext)
+        releaseWifiLock()
         SessionState.reset()
         if (Build.VERSION.SDK_INT >= 24) {
             stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -441,6 +444,33 @@ class ScreenCaptureService : Service() {
             stopForeground(true)
         }
         stopSelf()
+    }
+
+    /**
+     * Mientras se transmite, pide al Wi-Fi el modo de baja latencia (Android 10+) o de alto rendimiento
+     * (Android 5–9). Reduce la latencia y las pausas del enlace. Se libera al detener.
+     */
+    private fun acquireWifiLock() {
+        try {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val mode = if (Build.VERSION.SDK_INT >= 29) {
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                @Suppress("DEPRECATION")
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wm.createWifiLock(mode, "ScreenCastPro:stream").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo activar el modo Wi-Fi de baja latencia", e)
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try { wifiLock?.takeIf { it.isHeld }?.release() } catch (_: Exception) {}
+        wifiLock = null
     }
 
     private fun fail(message: String) {

@@ -20,6 +20,9 @@ class StreamHub(private val maxQueue: Int = 48) {
     inner class Subscriber internal constructor(val id: Long) {
         internal val queue = LinkedBlockingQueue<Packet>(maxQueue)
         @Volatile internal var synced = false
+        /** Se marca al reiniciar el flujo (p. ej. cambio de calidad): el cliente debe reconectar. */
+        @Volatile var closed = false
+            internal set
         /** Hasta que llega un keyframe el cliente no recibe datos. */
         fun poll(timeoutMs: Long): Packet? = queue.poll(timeoutMs, TimeUnit.MILLISECONDS)
     }
@@ -33,6 +36,21 @@ class StreamHub(private val maxQueue: Int = 48) {
     @Volatile private var avgQueueMs = 0.0
     @Volatile var lastActivityMs: Long = System.currentTimeMillis()
         private set
+
+    /** Segmento de inicio fMP4 (ftyp+moov). Lo primero que recibe cada cliente MP4. */
+    @Volatile var initSegment: ByteArray? = null
+        private set
+
+    fun setInitSegment(init: ByteArray?) {
+        initSegment = init
+    }
+
+    /** Reinicia el flujo: quita el segmento de inicio y cierra a los clientes para que reconecten. */
+    fun resetStream() {
+        initSegment = null
+        for (sub in subscribers) sub.closed = true
+        subscribers.clear()
+    }
 
     /** Callback para pedir un keyframe al codificador cuando entra un cliente nuevo. */
     @Volatile var onKeyframeRequested: (() -> Unit)? = null

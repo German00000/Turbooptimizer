@@ -15,9 +15,14 @@ object DlnaConnector {
      * pregunta el estado y, si no está reproduciendo, se prueba el siguiente perfil de
      * [Upnp.TS_PROTOCOL_INFO]. Si ninguno funciona, se lanza una excepción.
      */
-    fun load(avTransportUrl: String, streamUrl: String, title: String) {
+    fun load(
+        avTransportUrl: String,
+        streamUrl: String,
+        title: String,
+        profiles: List<String> = Upnp.MP4_PROTOCOL_INFO,
+    ) {
         var lastError: Exception? = null
-        for (profile in Upnp.TS_PROTOCOL_INFO) {
+        for (profile in profiles) {
             try {
                 val (setAction, setBody) = Upnp.setAvTransportUri(streamUrl, title, profile)
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)

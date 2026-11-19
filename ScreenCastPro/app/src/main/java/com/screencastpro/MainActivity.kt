@@ -206,16 +206,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun onConnectClicked(device: TvDevice, protocol: Protocol) {
         val s = SessionState.stats.value
-        val ts = s.tsUrl
+        val dlna = s.mp4Url
         val hls = s.hlsUrl
-        if (!s.running || ts == null || hls == null) {
+        if (!s.running || dlna == null || hls == null) {
             toast(getString(R.string.need_stream_first))
             return
         }
         settings.lastHost = device.host
         settings.lastProtocol = protocol.name
         autoConnectDone = true
-        TvConnection.connect(this, device, protocol, ts, hls, settings.autoReconnect)
+        TvConnection.connect(this, device, protocol, dlna, hls, settings.autoReconnect)
     }
 
     /**
@@ -225,7 +225,7 @@ class MainActivity : AppCompatActivity() {
     private fun tryAutoConnect() {
         if (autoConnectDone) return
         val s = SessionState.stats.value
-        if (!s.running || s.tsUrl == null || s.hlsUrl == null) return
+        if (!s.running || s.mp4Url == null || s.hlsUrl == null) return
         if (TvConnection.state.value !is TvConnection.State.Idle) return
         val host = settings.lastHost ?: return
         val device = lastDevices.firstOrNull { it.host == host } ?: return
@@ -233,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             Protocol.values().firstOrNull { it.name == name }
         }?.takeIf { it in device.protocols } ?: device.preferredProtocol
         autoConnectDone = true
-        TvConnection.connect(this, device, protocol, s.tsUrl, s.hlsUrl, settings.autoReconnect)
+        TvConnection.connect(this, device, protocol, s.mp4Url, s.hlsUrl, settings.autoReconnect)
     }
 
     // ------------------------------------------------------------ render
@@ -279,8 +279,8 @@ class MainActivity : AppCompatActivity() {
         b.tvWarning.text = warnings.joinToString("\n")
         b.tvWarning.visibility = if (warnings.isEmpty()) View.GONE else View.VISIBLE
 
-        if (s.tsUrl != null && s.hlsUrl != null) {
-            b.tvUrls.text = "Reproductor HTTP (VLC, etc.):\n${s.tsUrl}\n\nChromecast (HLS):\n${s.hlsUrl}"
+        if (s.mp4Url != null && s.hlsUrl != null) {
+            b.tvUrls.text = "DLNA / reproductor (MP4):\n${s.mp4Url}\n\nReproductor HTTP (MPEG-TS):\n${s.tsUrl}\n\nChromecast (HLS):\n${s.hlsUrl}"
             b.tvUrls.visibility = View.VISIBLE
             b.btnCopyUrl.visibility = View.VISIBLE
         }
@@ -323,7 +323,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun copyUrls() {
         val s = SessionState.stats.value
-        val text = "TS: ${s.tsUrl}\nHLS: ${s.hlsUrl}"
+        val text = "MP4: ${s.mp4Url}\nTS: ${s.tsUrl}\nHLS: ${s.hlsUrl}"
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("ScreenCast Pro", text))
         toast("URL copiada")

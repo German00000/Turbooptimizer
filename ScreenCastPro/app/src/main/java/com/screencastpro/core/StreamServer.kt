@@ -25,6 +25,7 @@ class StreamServer(
     private val hub: StreamHub,
     private val port: Int,
     private val token: String,
+    private val mp4Hub: StreamHub? = null,
     private val maxClients: Int = 4,
 ) {
     private val running = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -103,7 +104,13 @@ class StreamServer(
             val rest = path.substring(prefix.length)
             val out = BufferedOutputStream(s.getOutputStream(), 16 * 1024)
             when {
-                rest == "live.ts" -> serveLive(s, out)
+                rest == "live.ts" -> serveLive(s, out, hub, contentType = "video/mp2t", init = null)
+                rest == "live.mp4" -> {
+                    val m = mp4Hub
+                    val init = m?.initSegment
+                    if (m == null || init == null) respond(out, 503, "text/plain", "stream not ready".toByteArray(), method)
+                    else serveLive(s, out, m, contentType = "video/mp4", init = init)
+                }
                 rest == "live.m3u8" -> respond(out, 200, "application/vnd.apple.mpegurl", hub.segmenter.playlist().toByteArray(), method)
                 rest.startsWith("seg/") && rest.endsWith(".ts") -> {
                     val seq = rest.removePrefix("seg/").removeSuffix(".ts").toLongOrNull()
@@ -117,19 +124,20 @@ class StreamServer(
         }
     }
 
-    private fun serveLive(s: Socket, out: OutputStream) {
-        if (hub.subscriberCount >= maxClients) {
+    private fun serveLive(s: Socket, out: OutputStream, h: StreamHub, contentType: String, init: ByteArray?) {
+        if (h.subscriberCount >= maxClients) {
             return respondSimple(s, 503, "Too many viewers")
         }
-        val sub = hub.subscribe()
+        val sub = h.subscribe()
         try {
             val header = "HTTP/1.1 200 OK\r\n" +
-                "Content-Type: video/mp2t\r\n" +
+                "Content-Type: $contentType\r\n" +
                 "Cache-Control: no-cache, no-store\r\n" +
                 "Connection: close\r\n\r\n"
             out.write(header.toByteArray(Charsets.US_ASCII))
+            if (init != null) out.write(init)
             out.flush()
-            while (running.get() && !s.isClosed) {
+            while (running.get() && !s.isClosed && !sub.closed) {
                 val pkt: StreamHub.Packet? = try {
                     sub.poll(1000)
                 } catch (_: InterruptedException) {
@@ -137,19 +145,19 @@ class StreamServer(
                 }
                 if (pkt == null) continue
                 val waitedMs = (System.nanoTime() - pkt.enqueuedNs) / 1_000_000.0
-                hub.recordQueueWait(waitedMs)
+                h.recordQueueWait(waitedMs)
                 val t0 = System.nanoTime()
                 out.write(pkt.data)
                 out.flush()
-                hub.recordWrite((System.nanoTime() - t0) / 1_000_000.0)
-                hub.touch()
+                h.recordWrite((System.nanoTime() - t0) / 1_000_000.0)
+                h.touch()
             }
         } catch (_: IOException) {
             // Cliente desconectado: normal en streaming.
         } catch (_: RuntimeException) {
             // Error inesperado de un cliente: se cierra solo esa conexión.
         } finally {
-            hub.unsubscribe(sub)
+            h.unsubscribe(sub)
         }
     }
 

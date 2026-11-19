@@ -47,6 +47,9 @@ object Upnp {
      * Tipos MIME/protocolInfo que los televisores DLNA aceptan para MPEG-TS en vivo.
      * Los renderizadores no son uniformes: si uno rechaza SetAVTransportURI, se prueba el siguiente.
      */
+    /** Perfil MP4 fragmentado: el que anuncian los televisores (GetProtocolInfo). */
+    val MP4_PROTOCOL_INFO: List<String> = listOf("http-get:*:video/mp4:*")
+
     val TS_PROTOCOL_INFO: List<String> = listOf(
         // Orden según GetProtocolInfo de televisores reales: primero los que anuncian.
         "http-get:*:video/mp2ts:*",

@@ -82,6 +82,9 @@ class ScreenCaptureService : Service() {
     private var audio: AudioCapture? = null
     @Volatile private var muxer: TsMuxer? = null
     @Volatile private var hub: StreamHub? = null
+    /** Hub MP4 fragmentado (DLNA). Cada cambio de calidad reinicia su segmento de inicio. */
+    @Volatile private var mp4Hub: StreamHub? = null
+    @Volatile private var fmp4: com.screencastpro.core.Fmp4Muxer? = null
     private var server: StreamServer? = null
     private var controller: AdaptiveController? = null
     private var token = ""
@@ -219,7 +222,10 @@ class ScreenCaptureService : Service() {
         val h2 = StreamHub()
         h2.onKeyframeRequested = { encoder?.requestKeyframe() }
         hub = h2
-        server = StreamServer(h2, PORT, token).also { it.start() }
+        val m4 = StreamHub()
+        m4.onKeyframeRequested = { encoder?.requestKeyframe() }
+        mp4Hub = m4
+        server = StreamServer(h2, PORT, token, m4).also { it.start() }
 
         audioActive = wantAudio && Build.VERSION.SDK_INT >= 29 && hasRecordAudio() && startAudio(mp)
         muxer = TsMuxer(audioActive)
@@ -250,6 +256,9 @@ class ScreenCaptureService : Service() {
             vd.resize(p.width, p.height, dpi)
             vd.setSurface(enc.inputSurface)
         }
+        // Cada encoder tiene su propio segmento de inicio (resolución distinta): se reinicia el flujo MP4.
+        mp4Hub?.resetStream()
+        fmp4 = com.screencastpro.core.Fmp4Muxer(p.width, p.height, p.fps)
         val old = encoder
         encoder = enc
         currentLevel = level
@@ -279,6 +288,14 @@ class ScreenCaptureService : Service() {
         framesOut.incrementAndGet()
         bytesOut.addAndGet(chunk.size.toLong())
         h.publish(chunk, ptsUs, key)
+
+        val f = fmp4
+        val m4 = mp4Hub
+        if (f != null && m4 != null) {
+            if (!f.hasParams) f.extractParams(au)
+            if (f.hasParams && m4.initSegment == null) m4.setInitSegment(f.initSegment())
+            if (m4.initSegment != null) m4.publish(f.fragment(au, ptsUs, key), ptsUs, key)
+        }
     }
 
     private fun onAudio(adts: ByteArray, ptsUs: Long) {
@@ -402,6 +419,7 @@ class ScreenCaptureService : Service() {
                 thermal = lastThermal.name.lowercase().replaceFirstChar { c -> c.uppercase() },
                 qualityLabel = "${min(w, hgt)}p@${lvl.fps}" + if (adapted) " (adaptado)" else "",
                 tsUrl = base?.let { "$it/live.ts" },
+                mp4Url = base?.let { "$it/live.mp4" },
                 hlsUrl = base?.let { "$it/live.m3u8" },
                 error = null,
             )
@@ -425,6 +443,9 @@ class ScreenCaptureService : Service() {
         audio?.stop()
         audio = null
         muxer = null
+        mp4Hub?.resetStream()
+        mp4Hub = null
+        fmp4 = null
         server?.stop()
         server = null
         hub?.onKeyframeRequested = null

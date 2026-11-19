@@ -37,7 +37,7 @@ object TvConnection {
     private var appContext: Context? = null
     private var device: TvDevice? = null
     private var protocol: Protocol = Protocol.CAST
-    private var tsUrl: String? = null
+    private var dlnaUrl: String? = null
     private var hlsUrl: String? = null
     private var autoReconnect = true
     private var attempts = 0
@@ -61,7 +61,7 @@ object TvConnection {
                 }
                 if (reload && autoReconnect) {
                     try {
-                        DlnaConnector.load(av, tsUrl ?: return@execute, TITLE)
+                        DlnaConnector.load(av, dlnaUrl ?: return@execute, TITLE)
                     } catch (_: Exception) {
                         main.post { if (gen == generation) scheduleRetry("El televisor dejó de responder") }
                     }
@@ -72,7 +72,7 @@ object TvConnection {
     }
 
     /**
-     * @param tsUrl  URL MPEG-TS (reproductores DLNA y HTTP).
+     * @param dlnaUrl URL MP4 fragmentado (televisores DLNA).
      * @param hlsUrl URL HLS (Chromecast / Google Cast).
      */
     /** [protocol] es el modo elegido por el usuario (Cast o DLNA), debe estar anunciado por el dispositivo. */
@@ -80,7 +80,7 @@ object TvConnection {
         context: Context,
         device: TvDevice,
         protocol: Protocol,
-        tsUrl: String,
+        dlnaUrl: String,
         hlsUrl: String,
         autoReconnect: Boolean,
     ) {
@@ -90,7 +90,7 @@ object TvConnection {
         generation++
         this.device = device
         this.protocol = protocol
-        this.tsUrl = tsUrl
+        this.dlnaUrl = dlnaUrl
         this.hlsUrl = hlsUrl
         this.autoReconnect = autoReconnect
         attempts = 0
@@ -145,7 +145,7 @@ object TvConnection {
             }
             Protocol.DLNA -> {
                 val av = dev.avTransportUrl ?: return fail(dev, "El televisor no expone AVTransport")
-                val url = tsUrl ?: return fail(dev, "Falta la URL de transmisión")
+                val url = dlnaUrl ?: return fail(dev, "Falta la URL de transmisión")
                 io.execute {
                     try {
                         DlnaConnector.load(av, url, TITLE)

@@ -20,6 +20,8 @@ data class StreamStats(
     val thermal: String = "",
     val qualityLabel: String = "",
     val tsUrl: String? = null,
+    /** URL MP4 fragmentado: la que usa DLNA. */
+    val mp4Url: String? = null,
     val hlsUrl: String? = null,
     val error: String? = null,
 )

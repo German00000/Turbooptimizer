@@ -56,6 +56,7 @@ object TvConnection {
             io.execute {
                 val reload: Boolean = try {
                     val s = DlnaConnector.transportState(av)
+                    DiagLog.i("TV", "vigilancia DLNA: estado $s")
                     s == "STOPPED" || s == "NO_MEDIA_PRESENT"
                 } catch (_: Exception) {
                     true

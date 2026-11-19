@@ -133,6 +133,9 @@ class StreamServer(
         }
         val sub = h.subscribe()
         log("espectador conectado ($contentType)")
+        val connectedAt = System.currentTimeMillis()
+        var sentBytes = 0L
+        var reason = "sin error de escritura"
         try {
             val header = "HTTP/1.1 200 OK\r\n" +
                 "Content-Type: $contentType\r\n" +
@@ -153,16 +156,18 @@ class StreamServer(
                 val t0 = System.nanoTime()
                 out.write(pkt.data)
                 out.flush()
+                sentBytes += pkt.data.size
                 h.recordWrite((System.nanoTime() - t0) / 1_000_000.0)
                 h.touch()
             }
-        } catch (_: IOException) {
-            // Cliente desconectado: normal en streaming.
+        } catch (e: IOException) {
+            // Cliente desconectado: normal en streaming. Se registra el motivo para diagnosticarlo.
+            reason = "${e.javaClass.simpleName}: ${e.message ?: "sin detalle"}"
         } catch (_: RuntimeException) {
             // Error inesperado de un cliente: se cierra solo esa conexión.
         } finally {
             h.unsubscribe(sub)
-            log("espectador desconectado ($contentType)")
+            log("espectador desconectado ($contentType) tras ${(System.currentTimeMillis() - connectedAt) / 1000} s, ${sentBytes / 1024} KB enviados, motivo: $reason")
         }
     }
 

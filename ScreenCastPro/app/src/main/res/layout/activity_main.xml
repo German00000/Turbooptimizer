@@ -70,8 +70,14 @@
                     android:textAppearance="?attr/textAppearanceTitleMedium"
                     android:textStyle="bold" />
 
-                <TextView android:id="@+id/tvConnection" style="@style/Stat.Value" android:text="—" />
-                <TextView android:id="@+id/tvDevice" style="@style/Stat.Value" android:text="—" />
+                <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvConnection" style="@style/Stat.Value" android:text="—" />
+                <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvDevice" style="@style/Stat.Value" android:text="—" />
 
                 <GridLayout
                     android:layout_width="match_parent"
@@ -80,23 +86,53 @@
                     android:columnCount="2"
                     android:useDefaultMargins="false">
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_fps" />
-                    <TextView android:id="@+id/tvFps" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_fps" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvFps" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_resolution" />
-                    <TextView android:id="@+id/tvResolution" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_resolution" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvResolution" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_bitrate" />
-                    <TextView android:id="@+id/tvBitrate" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_bitrate" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvBitrate" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_latency" />
-                    <TextView android:id="@+id/tvLatency" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_latency" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvLatency" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_clients" />
-                    <TextView android:id="@+id/tvClients" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="0" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_clients" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvClients" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="0" />
 
-                    <TextView style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_audio" />
-                    <TextView android:id="@+id/tvAudio" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
+                    <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_columnWeight="1" android:text="@string/label_audio" />
+                    <TextView
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:id="@+id/tvAudio" style="@style/Stat.Value" android:layout_columnWeight="1" android:text="—" />
                 </GridLayout>
 
                 <TextView
@@ -211,21 +247,27 @@
                     android:textAppearance="?attr/textAppearanceTitleMedium"
                     android:textStyle="bold" />
 
-                <TextView style="@style/Stat.Label" android:layout_marginTop="12dp" android:text="@string/setting_resolution" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_marginTop="12dp" android:text="@string/setting_resolution" />
                 <Spinner
                     android:id="@+id/spResolution"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="48dp" />
 
-                <TextView style="@style/Stat.Label" android:layout_marginTop="8dp" android:text="@string/setting_fps" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_marginTop="8dp" android:text="@string/setting_fps" />
                 <Spinner
                     android:id="@+id/spFps"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="48dp" />
 
-                <TextView style="@style/Stat.Label" android:layout_marginTop="8dp" android:text="@string/setting_bitrate" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" style="@style/Stat.Label" android:layout_marginTop="8dp" android:text="@string/setting_bitrate" />
                 <Spinner
                     android:id="@+id/spBitrate"
                     android:layout_width="match_parent"

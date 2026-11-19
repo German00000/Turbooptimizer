@@ -47,7 +47,10 @@ object SsdpDiscovery {
             val host = URI(location).host ?: return null
             TvDevice(
                 host = host,
-                name = info.friendlyName.ifBlank { host },
+                name = info.friendlyName.ifBlank {
+                    listOf(info.manufacturer, info.modelName).filter { it.isNotBlank() }
+                        .joinToString(" ").ifBlank { host }
+                },
                 protocols = setOf(Protocol.DLNA),
                 avTransportUrl = control,
             )

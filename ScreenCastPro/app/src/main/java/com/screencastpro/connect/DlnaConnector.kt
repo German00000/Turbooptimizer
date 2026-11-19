@@ -9,11 +9,25 @@ import com.screencastpro.net.Http
  */
 object DlnaConnector {
 
+    /**
+     * Envía la URL al televisor. Los renderizadores difieren en qué tipo MIME aceptan para MPEG-TS
+     * (VIDAA, Samsung, LG, Sony…): se prueba cada perfil de [Upnp.TS_PROTOCOL_INFO] hasta que
+     * SetAVTransportURI responda con éxito. Si ninguno funciona, se lanza el último error.
+     */
     fun load(avTransportUrl: String, streamUrl: String, title: String) {
-        val (setAction, setBody) = Upnp.setAvTransportUri(streamUrl, title)
-        Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)
-        val (playAction, playBody) = Upnp.play()
-        Http.soap(avTransportUrl, Upnp.soapActionHeader(playAction), playBody)
+        var lastError: Exception? = null
+        for (profile in Upnp.TS_PROTOCOL_INFO) {
+            try {
+                val (setAction, setBody) = Upnp.setAvTransportUri(streamUrl, title, profile)
+                Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)
+                val (playAction, playBody) = Upnp.play()
+                Http.soap(avTransportUrl, Upnp.soapActionHeader(playAction), playBody)
+                return
+            } catch (e: java.io.IOException) {
+                lastError = e
+            }
+        }
+        throw lastError ?: java.io.IOException("El televisor no aceptó ningún perfil de transmisión")
     }
 
     fun stop(avTransportUrl: String) {

@@ -36,7 +36,22 @@ object Upnp {
     /** Resuelve una URL relativa (controlURL) contra la LOCATION de la descripción. */
     fun resolve(base: String, relative: String): String = URI(base).resolve(relative).toString()
 
-    class RendererInfo(val friendlyName: String, val avTransportControlUrl: String?)
+    class RendererInfo(
+        val friendlyName: String,
+        val manufacturer: String,
+        val modelName: String,
+        val avTransportControlUrl: String?,
+    )
+
+    /**
+     * Tipos MIME/protocolInfo que los televisores DLNA aceptan para MPEG-TS en vivo.
+     * Los renderizadores no son uniformes: si uno rechaza SetAVTransportURI, se prueba el siguiente.
+     */
+    val TS_PROTOCOL_INFO: List<String> = listOf(
+        "http-get:*:video/mp2t:*",
+        "http-get:*:video/mpeg:*",
+        "http-get:*:video/x-mpegts:*",
+    )
 
     /** Lee friendlyName y la URL de control de AVTransport desde el XML de descripción del dispositivo. */
     fun parseDeviceDescription(xml: String, location: String): RendererInfo {
@@ -44,6 +59,8 @@ object Upnp {
         factory.isNamespaceAware = false
         val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
         val name = doc.getElementsByTagName("friendlyName").item(0)?.textContent?.trim().orEmpty()
+        val manufacturer = doc.getElementsByTagName("manufacturer").item(0)?.textContent?.trim().orEmpty()
+        val model = doc.getElementsByTagName("modelName").item(0)?.textContent?.trim().orEmpty()
         var control: String? = null
         val services = doc.getElementsByTagName("service")
         for (i in 0 until services.length) {
@@ -63,7 +80,7 @@ object Upnp {
                 break
             }
         }
-        return RendererInfo(name, control)
+        return RendererInfo(name, manufacturer, model, control)
     }
 
     /** Escapa texto para incluirlo en XML. */
@@ -79,14 +96,14 @@ object Upnp {
     }
 
     /** Metadatos DIDL-Lite para un ítem de vídeo en vivo. */
-    fun didlMetadata(title: String, streamUrl: String, mime: String = "video/mp2t"): String {
+    fun didlMetadata(title: String, streamUrl: String, protocolInfo: String = TS_PROTOCOL_INFO[0]): String {
         val didl = "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
             "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
             "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
             "<item id=\"0\" parentID=\"-1\" restricted=\"1\">" +
             "<dc:title>${escapeXml(title)}</dc:title>" +
             "<upnp:class>object.item.videoItem</upnp:class>" +
-            "<res protocolInfo=\"http-get:*:$mime:*\">${escapeXml(streamUrl)}</res>" +
+            "<res protocolInfo=\"$protocolInfo\">${escapeXml(streamUrl)}</res>" +
             "</item></DIDL-Lite>"
         return didl
     }
@@ -98,10 +115,10 @@ object Upnp {
             "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
             "<s:Body><u:$action xmlns:u=\"$AVTRANSPORT\">$args</u:$action></s:Body></s:Envelope>"
 
-    fun setAvTransportUri(streamUrl: String, title: String): Pair<String, String> {
+    fun setAvTransportUri(streamUrl: String, title: String, protocolInfo: String = TS_PROTOCOL_INFO[0]): Pair<String, String> {
         val args = "<InstanceID>0</InstanceID>" +
             "<CurrentURI>${escapeXml(streamUrl)}</CurrentURI>" +
-            "<CurrentURIMetaData>${escapeXml(didlMetadata(title, streamUrl))}</CurrentURIMetaData>"
+            "<CurrentURIMetaData>${escapeXml(didlMetadata(title, streamUrl, protocolInfo))}</CurrentURIMetaData>"
         return "SetAVTransportURI" to soapEnvelope("SetAVTransportURI", args)
     }
 

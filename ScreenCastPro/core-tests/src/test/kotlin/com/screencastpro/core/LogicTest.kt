@@ -228,6 +228,24 @@ class UpnpTest {
     }
 
     @Test
+    fun parsesManufacturerAndModel() {
+        val xml = "<root><device><friendlyName></friendlyName><manufacturer>Hisense</manufacturer>" +
+            "<modelName>VIDAA U</modelName><serviceList><service><serviceType>urn:schemas-upnp-org:service:AVTransport:1" +
+            "</serviceType><controlURL>/avt</controlURL></service></serviceList></device></root>"
+        val info = Upnp.parseDeviceDescription(xml, "http://10.0.0.5:8000/d.xml")
+        assertEquals("Hisense", info.manufacturer)
+        assertEquals("VIDAA U", info.modelName)
+        assertEquals("http://10.0.0.5:8000/avt", info.avTransportControlUrl)
+    }
+
+    @Test
+    fun setAvTransportUsesRequestedProtocolInfo() {
+        val (_, body) = Upnp.setAvTransportUri("http://10.0.0.2:8765/t/live.ts", "x", "http-get:*:video/mpeg:*")
+        assertTrue(body.contains("video/mpeg"))
+        assertFalse(body.contains("video/mp2t"))
+    }
+
+    @Test
     fun parsesTransportState() {
         val xml = "<CurrentTransportState>PLAYING</CurrentTransportState>"
         assertEquals("PLAYING", Upnp.parseTransportState(xml))

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
@@ -81,6 +82,7 @@ class GameViewModel(private val c: AppContainer) : ViewModel() {
     val session = GameSessionState.session
     val fps = GameSessionState.fps
     val fpsStatus = GameSessionState.fpsStatus
+    val fpsSummary = GameSessionState.fpsSummary
     val overlayVisible = GameSessionState.overlayVisible
     val watching = GameSessionState.watching
     private val _apps = MutableStateFlow<List<AppEntry>>(emptyList())
@@ -167,6 +169,7 @@ fun GameBoosterScreen(onBack: () -> Unit, go: (String) -> Unit) {
     val session by vm.session.collectAsStateWithLifecycle()
     val fps by vm.fps.collectAsStateWithLifecycle()
     val fpsStatus by vm.fpsStatus.collectAsStateWithLifecycle()
+    val fpsSummary by vm.fpsSummary.collectAsStateWithLifecycle()
     val snap by vm.snapshot.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
@@ -194,7 +197,10 @@ fun GameBoosterScreen(onBack: () -> Unit, go: (String) -> Unit) {
                 item {
                     SectionCard(title = "Sesión activa: ${s.label}", icon = Icons.Default.SportsEsports, accent = TurboColors.Pink) {
                         InfoRow("Tiempo de partida", formatDuration(now - s.startedAt))
-                        InfoRow("FPS", fps?.let { String.format(Locale.getDefault(), "%.0f", it) } ?: "N/D")
+                        val fpsPlaceholder = com.turbooptimizer.monitor.FpsMonitor.placeholder(fpsStatus)
+                        InfoRow("FPS", fps?.let { String.format(Locale.getDefault(), "%.0f", it) } ?: fpsPlaceholder)
+                        InfoRow("Mínimo / máximo", fpsSummary?.let { "${"%.0f".format(Locale.getDefault(), it.min)} / ${"%.0f".format(Locale.getDefault(), it.max)}" } ?: fpsPlaceholder)
+                        InfoRow("Promedio", fpsSummary?.let { "%.0f".format(Locale.getDefault(), it.avg) } ?: fpsPlaceholder)
                         InfoRow("Estado FPS", fpsStatus)
                         InfoRow("Pantalla", snap?.screenHz?.let { hz ->
                             String.format(Locale.getDefault(), "%.0f Hz", hz) + (snap?.maxScreenHz?.let { m -> " (máx. ${String.format(Locale.getDefault(), "%.0f", m)} Hz)" } ?: "")
@@ -242,7 +248,7 @@ fun GameBoosterScreen(onBack: () -> Unit, go: (String) -> Unit) {
             }
             item {
                 SectionCard(title = "Overlay de estadísticas", icon = Icons.Default.Layers, trailing = { Switch(settings.overlayEnabled, { vm.setOverlay(it) }) }) {
-                    Text("Panel flotante con FPS, temperatura, RAM, CPU, batería y tiempo. Arrástralo para moverlo, tócalo para compactarlo y pulsa «×» para ocultarlo.", style = MaterialTheme.typography.bodySmall)
+                    Text("Panel flotante con FPS (actual, mínimo, máximo y promedio), método de medición, temperatura, RAM, CPU, batería y tiempo. Se actualiza cada 500 ms. Arrástralo para moverlo, arrastra el tirador «⇲» para cambiar el tamaño, tócalo para compactarlo y pulsa «×» para ocultarlo.", style = MaterialTheme.typography.bodySmall)
                     if (settings.overlayEnabled && !Permissions.canDrawOverlays(context)) {
                         TextButton(onClick = { Permissions.open(context, Permissions.overlayIntent(context)) }) { Text("Permitir mostrar sobre otras apps") }
                     }
@@ -263,6 +269,15 @@ fun GameBoosterScreen(onBack: () -> Unit, go: (String) -> Unit) {
                     if (!Permissions.hasUsageAccess(context)) {
                         TextButton(onClick = { Permissions.open(context, Permissions.usageAccessIntent(context)) }) { Text("Conceder acceso de uso (necesario)") }
                     }
+                }
+            }
+            item {
+                SectionCard(title = "Diagnóstico", icon = Icons.Default.BugReport) {
+                    Text(
+                        "Registros de Shizuku, permisos, comandos, SurfaceFlinger y del medidor de FPS. Muestra por qué el FPS aparece como N/D y permite copiar los registros para reportar un problema.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = { go(Routes.DIAGNOSTICS) }) { Text("Ver diagnóstico") }
                 }
             }
             item {

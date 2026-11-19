@@ -2,8 +2,10 @@ package com.turbooptimizer
 
 import android.app.Application
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.view.Display
 import com.turbooptimizer.apps.AppRepository
+import com.turbooptimizer.core.diagnostics.Diagnostics
 import com.turbooptimizer.cleaner.CleanerExecutor
 import com.turbooptimizer.cleaner.DuplicateFinder
 import com.turbooptimizer.cleaner.StorageScanner
@@ -56,6 +58,10 @@ class AppContainer(val app: Application) {
         .stateIn(appScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun start() {
+        Diagnostics.i(
+            "App",
+            "Inicio de TurboOptimizer ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}) · ${Build.MODEL}",
+        )
         shizuku.init()
         appScope.launch { log.load() }
     }

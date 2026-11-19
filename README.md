@@ -172,9 +172,33 @@ acciones de deshacer.
 - Edge-to-edge (`enableEdgeToEdge`) — obligatorio desde Android 15.
 - Predictive back (`enableOnBackInvokedCallback`).
 - Acceso parcial a fotos (`READ_MEDIA_VISUAL_USER_SELECTED`) — Android 14+.
+- Medidor de FPS: mismo código en Android 13–16. Se verificó la lógica con tests unitarios; en
+  Android 15 y 16 el resultado depende del fabricante (ver «Medidor de FPS»).
+
+### Medidor de FPS (Game Booster)
+- **Actualización**: cada 500 ms (si una lectura tarda más, la siguiente espera solo lo necesario).
+- **Valores**: FPS actual (media móvil suave), mínimo, máximo y promedio de la sesión. Mín/máx/promedio
+  usan los valores sin suavizar y se reinician al iniciar una sesión.
+- **Estado de medición**: se muestra en la tarjeta de la sesión y en el overlay («SurfaceFlinger»,
+  «contador global», «sin lectura», «no disponible»…).
+- **Overlay**: se puede mover arrastrándolo, ocultar con «×» y cambiar el tamaño arrastrando el tirador «⇲».
+
+**Método utilizado** (todo vía Shizuku, solo lectura, sin root):
+1. **Principal — marcas de presentación de SurfaceFlinger.** `dumpsys SurfaceFlinger --list` localiza
+   las capas del paquete en primer plano y `dumpsys SurfaceFlinger --latency <capa>` devuelve el instante
+   real en que el sistema presentó cada fotograma. Los FPS son fotogramas presentados en la última ventana
+   de 2 s. Se usa la capa que presentó más recientemente.
+2. **Alternativo — contador global.** `service call SurfaceFlinger 1013` devuelve el número total de
+   composiciones; los FPS son la diferencia entre muestras. Mezcla todas las capas, así que es aproximado.
+3. Si ninguno da datos válidos se muestra «N/D». Nunca se estima un valor.
+
+Limitaciones: mide fotogramas presentados por el sistema, no los que dibuja el juego. Si la pantalla no
+cambia, no se presentan fotogramas y el valor baja a 0. Los FPS no pueden superar la frecuencia de la
+pantalla; las muestras que lo hacen se descartan.
 
 ### Limitaciones conocidas
-- **FPS**: depende de que el fabricante permita `service call SurfaceFlinger 1013`; si no, se muestra «N/D».
+- **FPS**: depende de que el fabricante permita `dumpsys SurfaceFlinger` (o `service call SurfaceFlinger 1013`);
+  si no, se muestra «N/D».
 - **Temperatura de CPU/GPU**: requiere Shizuku y que la HAL térmica la exponga; sin ella se usa la de la batería.
 - **Uso de CPU sin Shizuku**: Android 8+ bloquea `/proc/stat` a las apps.
 - **Audio interno**: las apps que desactivan la captura (`allowAudioPlaybackCapture=false`) se graban en silencio.

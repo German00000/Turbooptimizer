@@ -25,6 +25,8 @@ object CommandPolicy {
     private val SCALE_REGEX = Regex("^(0|0\\.5|1|1\\.0|1\\.5|2|2\\.0|0\\.0)$")
     private val TRIM_REGEX = Regex("^\\d{1,4}[KMG]$")
     private val FORBIDDEN_CHARS = charArrayOf('\n', '\r', '\u0000', ';', '|', '&', '`', '$', '>', '<', '*', '?', '"', '\'', '\\')
+    /** Igual que [FORBIDDEN_CHARS] pero admite '$': los nombres de actividad con clases internas (Clase$Interna) lo usan. Sin shell, no es inyección. */
+    private val LAYER_FORBIDDEN_CHARS = FORBIDDEN_CHARS.filter { it != '$' }.toCharArray()
 
     val ANIMATION_KEYS = listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
     private val GAME_MODES = setOf("standard", "performance", "battery")
@@ -113,7 +115,7 @@ object CommandPolicy {
 
     /** Nombre de capa de SurfaceFlinger (solo lectura): ASCII imprimible, sin opciones ni caracteres de shell. */
     fun isValidLayerName(name: String): Boolean =
-        name.length in 1..200 && !name.startsWith("-") && name.all { it in ' '..'~' } && name.none { it in FORBIDDEN_CHARS }
+        name.length in 1..200 && !name.startsWith("-") && name.all { it in ' '..'~' } && name.none { it in LAYER_FORBIDDEN_CHARS }
 
     fun isCriticalPackage(pkg: String): Boolean =
         pkg == BuildConfig.APPLICATION_ID ||
@@ -122,7 +124,8 @@ object CommandPolicy {
 
     fun check(cmd: List<String>): Verdict {
         if (cmd.isEmpty() || cmd.size > 20) return Verdict.Denied("Comando vacío o demasiado largo")
-        if (cmd.any { it.isEmpty() || it.length > 256 || it.any { c -> c in FORBIDDEN_CHARS } }) {
+        val forbidden = if (cmd.size == 4 && cmd[0] == "dumpsys" && cmd[1] == "SurfaceFlinger") LAYER_FORBIDDEN_CHARS else FORBIDDEN_CHARS
+        if (cmd.any { it.isEmpty() || it.length > 256 || it.any { c -> c in forbidden } }) {
             return Verdict.Denied("Argumentos con caracteres no permitidos")
         }
         return when (cmd[0]) {

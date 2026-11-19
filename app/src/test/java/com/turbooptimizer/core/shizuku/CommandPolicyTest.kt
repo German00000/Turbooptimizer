@@ -24,7 +24,7 @@ class CommandPolicyTest {
         assertTrue(allowed("cat", "/sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq"))
         assertTrue(allowed("service", "call", "SurfaceFlinger", "1013"))
         assertTrue(allowed("dumpsys", "SurfaceFlinger", "--list"))
-        assertTrue(allowed("dumpsys", "SurfaceFlinger", "--latency", "SurfaceView[com.example.game/com.example.game.Main]#0"))
+        assertTrue(allowed("dumpsys", "SurfaceFlinger", "--latency", "SurfaceView[com.example.game/com.example.game.Main\$Inner]#0"))
     }
 
     @Test fun blocksSurfaceFlingerInjection() {

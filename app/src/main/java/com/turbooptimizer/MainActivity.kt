@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.turbooptimizer.data.AppSettings
+import com.turbooptimizer.util.PermissionDiagnostics
 import com.turbooptimizer.game.GameSessionState
 import com.turbooptimizer.ui.navigation.TurboNavHost
 import com.turbooptimizer.ui.theme.TurboTheme
@@ -39,5 +40,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // El usuario puede volver de Shizuku o de Ajustes con permisos nuevos.
         (application as TurboApp).container.shizuku.refresh()
+        // Registra los permisos que cambiaron (concedidos o denegados) durante el diálogo o en Ajustes.
+        PermissionDiagnostics.check(this)
     }
 }

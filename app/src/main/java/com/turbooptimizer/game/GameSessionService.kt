@@ -18,6 +18,7 @@ import com.turbooptimizer.MainActivity
 import com.turbooptimizer.R
 import com.turbooptimizer.TurboApp
 import com.turbooptimizer.data.SettingsRepository
+import com.turbooptimizer.monitor.FpsMonitor
 import com.turbooptimizer.util.NotificationChannels
 import com.turbooptimizer.util.Permissions
 import com.turbooptimizer.util.formatBytes
@@ -108,15 +109,24 @@ class GameSessionService : Service() {
         val metricsJob = scope.launch { container.snapshots.collect { } }
         try {
             while (scope.isActive) {
+                val tick = System.currentTimeMillis()
                 val session = GameSessionState.session.value ?: break
-                // Sin lectura válida el valor pasa a null (N/D): nunca se muestra un FPS antiguo.
+                // Sin lectura válida el valor pasa a null: nunca se muestra un FPS antiguo. En su lugar se
+                // muestra el motivo (midiendo, sin permisos, Shizuku inactivo, no compatible).
                 val fps = container.fps.sample(session.packageName)
                 GameSessionState.fps.value = fps
                 GameSessionState.fpsStatus.value = container.fps.status.value
+                GameSessionState.fpsSummary.value = container.fps.summary.value
+                val summary = GameSessionState.fpsSummary.value
+                val placeholder = FpsMonitor.placeholder(GameSessionState.fpsStatus.value)
                 val snap = container.snapshots.value
                 overlay?.update(
                     OverlayStats(
-                        fps = GameSessionState.fps.value?.let { String.format(Locale.getDefault(), "%.0f", it) } ?: "N/D",
+                        fps = fps?.let { String.format(Locale.getDefault(), "%.0f", it) } ?: placeholder,
+                        min = summary?.let { String.format(Locale.getDefault(), "%.0f", it.min) } ?: placeholder,
+                        max = summary?.let { String.format(Locale.getDefault(), "%.0f", it.max) } ?: placeholder,
+                        avg = summary?.let { String.format(Locale.getDefault(), "%.0f", it.avg) } ?: placeholder,
+                        measure = shortMeasure(GameSessionState.fpsStatus.value),
                         temp = formatTemp(snap?.bestTempC),
                         ram = snap?.let { formatPercent(it.ramUsedFraction * 100) } ?: "N/D",
                         cpu = formatPercent(snap?.cpuUsagePercent),
@@ -135,11 +145,24 @@ class GameSessionService : Service() {
                     }
                     nextBoostCheck = now + 60_000 // se comprueba cada minuto, se ejecuta como mucho cada «intervalo»
                 }
-                delay(1_000)
+                // Espera compensada: si la lectura de FPS tardó más de 500 ms, no se acumula retraso.
+                delay((SAMPLE_INTERVAL_MS - (System.currentTimeMillis() - tick)).coerceAtLeast(0L))
             }
         } finally {
             metricsJob.cancel()
         }
+    }
+
+    /** Etiqueta corta del método para el overlay, derivada del estado del monitor de FPS. */
+    private fun shortMeasure(status: String): String = when {
+        status.startsWith("Presentados") -> "SurfaceFlinger"
+        status.startsWith("Contador") -> "contador global"
+        status.startsWith("Midiendo") -> "midiendo…"
+        status.startsWith("Reintentando") -> "reintentando"
+        status.startsWith("Sin permisos") -> "sin permisos"
+        status.startsWith("Shizuku") -> "Shizuku inactivo"
+        status.startsWith("No compatible") -> "no compatible"
+        else -> "sin medición"
     }
 
     /** Detecta cuándo un juego de la lista pasa a primer plano usando eventos de UsageStats. */
@@ -256,6 +279,8 @@ class GameSessionService : Service() {
         private const val TAG = "GameSessionService"
         private const val NOTIFICATION_ID = 1001
         private const val BOOST_NOTIFICATION_ID = 1002
+        /** Periodo de muestreo de FPS y actualización del overlay. */
+        const val SAMPLE_INTERVAL_MS = 500L
         const val ACTION_TOGGLE_OVERLAY = "com.turbooptimizer.game.TOGGLE_OVERLAY"
         const val ACTION_END_SESSION = "com.turbooptimizer.game.END_SESSION"
         const val ACTION_STOP_WATCH = "com.turbooptimizer.game.STOP_WATCH"

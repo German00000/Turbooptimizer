@@ -2,9 +2,11 @@ package com.turbooptimizer.game
 
 import android.content.Context
 import com.turbooptimizer.apps.AppRepository
+import com.turbooptimizer.core.diagnostics.Diagnostics
 import com.turbooptimizer.data.LogCategory
 import com.turbooptimizer.data.OperationLogRepository
 import com.turbooptimizer.data.OptimizationProfile
+import com.turbooptimizer.monitor.FpsSummary
 import com.turbooptimizer.optimizer.OptimizationEngine
 import com.turbooptimizer.optimizer.OptimizationPlan
 import com.turbooptimizer.optimizer.OptimizationResult
@@ -28,6 +30,8 @@ object GameSessionState {
     val fps = MutableStateFlow<Float?>(null)
     /** Motivo legible del último valor de FPS (o de por qué es N/D). */
     val fpsStatus = MutableStateFlow("Sin medición")
+    /** Mínimo, máximo y promedio de la sesión actual (null sin muestras). */
+    val fpsSummary = MutableStateFlow<FpsSummary?>(null)
     val overlayVisible = MutableStateFlow(true)
     val watching = MutableStateFlow(false)
 }
@@ -67,6 +71,8 @@ class GameBoostController(
             profile = plan.profile,
         )
         GameSessionState.fps.value = null
+        GameSessionState.fpsSummary.value = null
+        Diagnostics.i("GameBoost", "Sesión iniciada: $label (${if (auto) "automática" else "manual"}), ${if (simulate) "simulada" else "real"}")
         GameSessionService.start(context)
         if (launch) apps.launch(pkg)
         return result
@@ -77,7 +83,9 @@ class GameBoostController(
         val s = GameSessionState.session.value ?: return emptyList()
         GameSessionState.session.value = null
         GameSessionState.fps.value = null
+        GameSessionState.fpsSummary.value = null
         val messages = s.logId?.let { id -> log.find(id)?.takeIf { it.canUndo }?.let { undo.undo(it) } }.orEmpty()
+        Diagnostics.i("GameBoost", "Sesión finalizada: ${s.label}, ajustes restaurados: ${messages.size}")
         log.add(
             LogCategory.GAME,
             "Fin de sesión: ${s.label}",

@@ -37,7 +37,7 @@ object DlnaConnector {
                     if (state == "PLAYING" || state == "TRANSITIONING") return
                 }
                 lastError = java.io.IOException("El televisor no reproduce ($profile, estado $state)")
-            } catch (e: java.io.IOException) {
+            } catch (e: Exception) {
                 lastError = e
             }
         }

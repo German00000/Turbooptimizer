@@ -157,7 +157,8 @@ object TvConnection {
                             main.postDelayed(dlnaMonitor, DLNA_CHECK_MS)
                         }
                     } catch (e: Exception) {
-                        main.post { if (gen == generation) scheduleRetry("DLNA: ${e.message ?: "error de red"}") }
+                        val detail = e.message?.takeIf { it.isNotBlank() } ?: "sin detalle"
+                        main.post { if (gen == generation) scheduleRetry("DLNA ${e.javaClass.simpleName}: $detail") }
                     }
                 }
             }

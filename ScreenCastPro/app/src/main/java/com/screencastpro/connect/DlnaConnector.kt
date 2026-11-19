@@ -10,9 +10,10 @@ import com.screencastpro.net.Http
 object DlnaConnector {
 
     /**
-     * Envía la URL al televisor. Los renderizadores difieren en qué tipo MIME aceptan para MPEG-TS
-     * (VIDAA, Samsung, LG, Sony…): se prueba cada perfil de [Upnp.TS_PROTOCOL_INFO] hasta que
-     * SetAVTransportURI responda con éxito. Si ninguno funciona, se lanza el último error.
+     * Envía la URL al televisor y comprueba que de verdad reproduce. Muchos televisores aceptan
+     * SetAVTransportURI y después no reproducen (p. ej. "formato no compatible"), así que tras Play se
+     * pregunta el estado y, si no está reproduciendo, se prueba el siguiente perfil de
+     * [Upnp.TS_PROTOCOL_INFO]. Si ninguno funciona, se lanza una excepción.
      */
     fun load(avTransportUrl: String, streamUrl: String, title: String) {
         var lastError: Exception? = null
@@ -22,7 +23,10 @@ object DlnaConnector {
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(setAction), setBody)
                 val (playAction, playBody) = Upnp.play()
                 Http.soap(avTransportUrl, Upnp.soapActionHeader(playAction), playBody)
-                return
+                Thread.sleep(2500)
+                val state = transportState(avTransportUrl)
+                if (state == "PLAYING" || state == "TRANSITIONING") return
+                lastError = java.io.IOException("El televisor no reproduce ($profile, estado $state)")
             } catch (e: java.io.IOException) {
                 lastError = e
             }

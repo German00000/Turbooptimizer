@@ -48,9 +48,11 @@ object Upnp {
      * Los renderizadores no son uniformes: si uno rechaza SetAVTransportURI, se prueba el siguiente.
      */
     val TS_PROTOCOL_INFO: List<String> = listOf(
-        "http-get:*:video/mp2t:*",
+        // Orden según GetProtocolInfo de televisores reales: primero los que anuncian.
+        "http-get:*:video/mp2ts:*",
+        "http-get:*:video/m2ts:*",
         "http-get:*:video/mpeg:*",
-        "http-get:*:video/x-mpegts:*",
+        "http-get:*:video/mp2t:*",
     )
 
     /** Lee friendlyName y la URL de control de AVTransport desde el XML de descripción del dispositivo. */

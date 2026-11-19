@@ -246,6 +246,21 @@ class UpnpTest {
     }
 
     @Test
+    fun toleratesMalformedXmlFromRealTv() {
+        // XML real de un televisor DLNA: <controlURL> sin cerrar. El DOM falla; debe funcionar el respaldo por texto.
+        val xml = """<root><device><deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+            <friendlyName>TV de la sala</friendlyName><manufacturer>Hisense</manufacturer>
+            <serviceList>
+              <service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType><controlURL>/upnp/control/minguscmr</controlURL></service>
+              <service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><controlURL>/upnp/control/mingusavtr<controlURL></service>
+              <service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType><controlURL>/upnp/control/mingusrcr</controlURL></service>
+            </serviceList></device></root>"""
+        val info = Upnp.parseDeviceDescription(xml, "http://10.0.20.121:18400/MediaServer/rendererdevicedesc.xml")
+        assertEquals("TV de la sala", info.friendlyName)
+        assertEquals("http://10.0.20.121:18400/upnp/control/mingusavtr", info.avTransportControlUrl)
+    }
+
+    @Test
     fun parsesTransportState() {
         val xml = "<CurrentTransportState>PLAYING</CurrentTransportState>"
         assertEquals("PLAYING", Upnp.parseTransportState(xml))

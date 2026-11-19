@@ -54,7 +54,20 @@ object Upnp {
     )
 
     /** Lee friendlyName y la URL de control de AVTransport desde el XML de descripción del dispositivo. */
+    /**
+     * Lee friendlyName, fabricante, modelo y la URL de control de AVTransport.
+     * Muchos televisores publican XML mal formado (p. ej. `<controlURL>...<controlURL>`): si el parser
+     * DOM falla, se usa extracción por texto, que sí tolera esos errores.
+     */
     fun parseDeviceDescription(xml: String, location: String): RendererInfo {
+        return try {
+            parseWithDom(xml, location)
+        } catch (_: Exception) {
+            parseWithText(xml, location)
+        }
+    }
+
+    private fun parseWithDom(xml: String, location: String): RendererInfo {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = false
         val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
@@ -64,8 +77,7 @@ object Upnp {
         var control: String? = null
         val services = doc.getElementsByTagName("service")
         for (i in 0 until services.length) {
-            val svc = services.item(i)
-            val children = svc.childNodes
+            val children = services.item(i).childNodes
             var type = ""
             var url = ""
             for (j in 0 until children.length) {
@@ -81,6 +93,20 @@ object Upnp {
             }
         }
         return RendererInfo(name, manufacturer, model, control)
+    }
+
+    private fun parseWithText(xml: String, location: String): RendererInfo {
+        fun tag(t: String): String =
+            Regex("<$t>([^<]*)</$t>").find(xml)?.groupValues?.get(1)?.trim().orEmpty()
+        // En el bloque de AVTransport, el primer controlURL que aparece después de su serviceType.
+        var control: String? = null
+        val marker = "urn:schemas-upnp-org:service:AVTransport:"
+        val at = xml.indexOf(marker)
+        if (at >= 0) {
+            val m = Regex("<controlURL>\\s*([^<\\s]+)").find(xml, at)
+            if (m != null) control = resolve(location, m.groupValues[1])
+        }
+        return RendererInfo(tag("friendlyName"), tag("manufacturer"), tag("modelName"), control)
     }
 
     /** Escapa texto para incluirlo en XML. */
